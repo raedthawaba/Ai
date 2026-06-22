@@ -1,0 +1,107 @@
+# ═══════════════════════════════════════════════════════
+# configs/processing.yaml — Processing Engine Config
+# Section 5.17
+# ═══════════════════════════════════════════════════════
+
+# HTML Cleaner (section 5.2)
+html_cleaner:
+  use_trafilatura: true
+  fallback_to_bs4: true
+  min_content_length: 50
+
+# Text Normalizer (section 5.3)
+text_normalizer:
+  unicode_form: "NFC"
+  remove_emojis: true
+  reduce_repeated_punct: true
+  remove_zero_width: true
+  normalize_arabic_extended: true
+  normalize_arabic_kaf: true
+  normalize_arabic_yeh: true
+  fix_whitespace: true
+
+# Deduplicator (section 5.4)
+deduplicator:
+  deduplicate_urls: true
+  deduplicate_exact_content: true
+  deduplicate_similar_content: false
+  similarity_threshold: 0.85
+  content_preview_length: 500
+  min_content_length: 20
+
+# Language Filter (section 5.5)
+language_filter:
+  allowed_languages:
+    - ar
+    - en
+  min_confidence: 0.5
+  fallback_to_metadata: true
+  tag_detected_language: true
+  min_text_length: 20
+
+# Quality Scorer (section 5.6)
+quality_scorer:
+  min_words: 15
+  min_chars: 50
+  max_link_density: 0.4
+  max_repetition_ratio: 0.6
+  max_avg_sentence_length: 250
+  threshold: 0.3
+  weights:
+    content_length: 0.25
+    word_count: 0.20
+    link_density: 0.15
+    repetition: 0.15
+    readability: 0.10
+    metadata: 0.15
+
+# Spam Detector (section 5.7)
+spam_detector:
+  max_keyword_density: 0.08
+  max_repeated_links: 3
+  max_phrase_repeat_ratio: 0.35
+  max_caps_ratio: 0.6
+  max_punct_density: 0.15
+  enabled_rules:
+    - keyword_spam
+    - repeated_links
+    - repeated_phrases
+    - caps_ratio
+    - punct_density
+
+# Keyword Extractor (section 5.9)
+keyword_extractor:
+  max_keywords: 10
+  max_ngram_size: 2
+  deduplication_threshold: 0.7
+  language: "ar"
+  min_word_length: 3
+  min_freq: 1
+
+# Entity Extractor (section 5.10)
+entity_extractor:
+  extract_persons: true
+  extract_orgs: true
+  extract_locations: true
+  max_entities: 50
+  model_en: "en_core_web_sm"
+  model_ar: "ar_core_news_sm"
+
+# Summarizer (section 5.11)
+summarizer:
+  max_sentences: 3
+  min_sentence_length: 20
+  title_boost: 1.5
+  language: "ar"
+
+# Chunker (section 5.12)
+chunker:
+  strategy: "paragraph"   # paragraph | sentence | fixed | token_estimate
+  chunk_size: 512
+  overlap: 64
+  min_chunk_length: 20
+
+# Tokenizer (section 5.13)
+tokenizer:
+  encoding: "cl100k_base"
+  language: "en"

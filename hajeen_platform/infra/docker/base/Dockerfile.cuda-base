@@ -1,0 +1,35 @@
+FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04 AS cuda-base
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    CUDA_HOME=/usr/local/cuda \
+    PATH=/usr/local/cuda/bin:$PATH \
+    LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3.11-dev \
+    python3-pip \
+    build-essential \
+    curl \
+    git \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN ln -s /usr/bin/python3.11 /usr/bin/python && \
+    ln -s /usr/bin/pip3 /usr/bin/pip
+
+RUN groupadd -r gpuuser && useradd -r -g gpuuser gpuuser
+WORKDIR /app
+
+COPY requirements/gpu.txt requirements/gpu.txt
+RUN pip install --no-cache-dir -r requirements/gpu.txt
+
+FROM cuda-base AS production
+COPY . .
+RUN chown -R gpuuser:gpuuser /app
+USER gpuuser
+
+HEALTHCHECK --interval=30s --timeout=15s --start-period=60s --retries=3 \
+    CMD python -c "import torch; assert torch.cuda.is_available()" || exit 1

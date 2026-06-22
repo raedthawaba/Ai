@@ -1,0 +1,7 @@
+hajeen_large_trained/
+tokenizer_output/
+datasets/
+*.pt
+*.bin
+*.safetensors
+__pycache__/

@@ -1,0 +1,61 @@
+# ═══════════════════════════════════════════════════════
+# configs/filters.yaml — Policy Filter Configuration
+# Section 5.17
+# ═══════════════════════════════════════════════════════
+
+policy_filter:
+  # Domains to block entirely (article URL must not originate from these)
+  blocked_domains:
+    - spam-news.com
+    - fake-articles.net
+    - clickbait.io
+    - adspam.org
+
+  # Keywords that trigger rejection (title or content)
+  blocked_keywords:
+    - "casino"
+    - "gambling"
+    - "keno"
+    - "lottery winner"
+    - "make money fast"
+    - "work from home guaranteed"
+    - "click here to win"
+    - "free iphone"
+    - "اربح جائزة"
+    - "كازينو"
+    - "مقامرة"
+
+  # Minimum content length in characters (below this = rejected)
+  min_content_length: 50
+
+  # Case-sensitive keyword matching (false = case-insensitive)
+  case_sensitive: false
+
+  # Extended blacklists (merged with blocked_domains / blocked_keywords)
+  blacklist_domains: []
+  blacklist_keywords: []
+
+# Language filter defaults
+language_filter:
+  allowed_languages:
+    - ar
+    - en
+  min_confidence: 0.5
+  fallback_to_metadata: true
+  min_text_length: 20
+
+# Quality scorer defaults
+quality_filter:
+  threshold: 0.3
+  min_words: 15
+  min_chars: 50
+  max_link_density: 0.4
+  max_repetition_ratio: 0.6
+
+# Spam detector defaults
+spam_filter:
+  max_keyword_density: 0.08
+  max_repeated_links: 3
+  max_phrase_repeat_ratio: 0.35
+  max_caps_ratio: 0.6
+  max_punct_density: 0.15

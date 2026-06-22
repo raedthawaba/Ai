@@ -1,0 +1,25 @@
+apiVersion: v2
+name: hajeen-platform
+description: Hajeen AI Platform — Production-Grade Distributed AI Inference Platform
+type: application
+version: "1.0.0"
+appVersion: "1.0.0"
+keywords:
+  - ai
+  - inference
+  - llm
+  - machine-learning
+  - gpu
+home: https://hajeen.ai
+maintainers:
+  - name: Hajeen Platform Team
+    email: platform@hajeen.ai
+dependencies:
+  - name: postgresql
+    version: "14.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: redis
+    version: "18.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled

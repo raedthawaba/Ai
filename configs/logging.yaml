@@ -1,0 +1,89 @@
+# Logging Configuration — section 6.13
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  standard:
+    format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+  structured:
+    format: '{"time": "%(asctime)s", "level": "%(levelname)s", "logger": "%(name)s", "message": "%(message)s"}'
+    datefmt: "%Y-%m-%dT%H:%M:%S"
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: INFO
+    formatter: standard
+    stream: ext://sys.stdout
+
+  file_app:
+    class: logging.handlers.RotatingFileHandler
+    level: DEBUG
+    formatter: structured
+    filename: ./logs/hajeen_app.log
+    maxBytes: 10485760  # 10 MB
+    backupCount: 5
+    encoding: utf-8
+
+  file_tasks:
+    class: logging.handlers.RotatingFileHandler
+    level: DEBUG
+    formatter: structured
+    filename: ./logs/hajeen_tasks.log
+    maxBytes: 10485760
+    backupCount: 5
+    encoding: utf-8
+
+  file_scheduler:
+    class: logging.handlers.RotatingFileHandler
+    level: INFO
+    formatter: structured
+    filename: ./logs/hajeen_scheduler.log
+    maxBytes: 5242880  # 5 MB
+    backupCount: 3
+    encoding: utf-8
+
+  file_errors:
+    class: logging.handlers.RotatingFileHandler
+    level: ERROR
+    formatter: structured
+    filename: ./logs/hajeen_errors.log
+    maxBytes: 10485760
+    backupCount: 10
+    encoding: utf-8
+
+root:
+  level: INFO
+  handlers: [console, file_app, file_errors]
+
+loggers:
+  workers:
+    level: DEBUG
+    handlers: [file_tasks, console]
+    propagate: false
+
+  workers.tasks:
+    level: DEBUG
+    handlers: [file_tasks]
+    propagate: true
+
+  data_engine.ingestion.schedulers:
+    level: INFO
+    handlers: [file_scheduler, console]
+    propagate: false
+
+  monitoring:
+    level: DEBUG
+    handlers: [file_app]
+    propagate: true
+
+  uvicorn:
+    level: INFO
+    handlers: [console]
+    propagate: false
+
+  celery:
+    level: INFO
+    handlers: [file_tasks, console]
+    propagate: false

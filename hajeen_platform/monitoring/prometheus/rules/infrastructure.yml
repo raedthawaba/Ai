@@ -1,0 +1,59 @@
+groups:
+  - name: node-alerts
+    rules:
+      - alert: NodeCPUHigh
+        expr: |
+          (1 - avg by(node) (rate(node_cpu_seconds_total{mode="idle"}[5m]))) > 0.85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Node CPU high"
+          description: "Node {{ $labels.node }} CPU at {{ $value | humanizePercentage }}"
+
+      - alert: NodeMemoryHigh
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Node memory high"
+          description: "Node {{ $labels.node }} memory at {{ $value | humanizePercentage }}"
+
+      - alert: NodeDiskSpaceLow
+        expr: |
+          (node_filesystem_avail_bytes / node_filesystem_size_bytes) < 0.10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Node disk space critical"
+          description: "Node {{ $labels.node }} disk at {{ $value | humanizePercentage }} free"
+
+  - name: database-alerts
+    rules:
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL is down"
+
+      - alert: PostgresConnectionsHigh
+        expr: |
+          pg_stat_database_numbackends / pg_settings_max_connections > 0.80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL connections high"
+
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"

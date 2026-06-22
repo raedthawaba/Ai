@@ -1,0 +1,20 @@
+FROM nginx:1.25-alpine AS production
+
+RUN apk add --no-cache curl openssl
+
+RUN addgroup -S nginx_app && adduser -S -G nginx_app nginx_app
+
+COPY infra/nginx/nginx.conf /etc/nginx/nginx.conf
+COPY infra/nginx/conf.d/ /etc/nginx/conf.d/
+COPY infra/nginx/ssl/ /etc/nginx/ssl/
+
+RUN chown -R nginx_app:nginx_app /var/cache/nginx /var/log/nginx /etc/nginx/conf.d && \
+    touch /var/run/nginx.pid && chown nginx_app:nginx_app /var/run/nginx.pid
+
+USER nginx_app
+EXPOSE 80 443
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost/health || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]

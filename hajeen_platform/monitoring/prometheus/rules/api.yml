@@ -1,0 +1,89 @@
+groups:
+  - name: hajeen-api-alerts
+    interval: 30s
+    rules:
+      - alert: APIHighErrorRate
+        expr: |
+          rate(http_requests_total{status=~"5.."}[5m]) /
+          rate(http_requests_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "High API error rate ({{ $labels.app }})"
+          description: "Error rate is {{ $value | humanizePercentage }} for {{ $labels.app }}"
+          runbook_url: "https://wiki.hajeen.ai/runbooks/api-errors"
+
+      - alert: APIHighLatency
+        expr: |
+          histogram_quantile(0.99,
+            rate(http_request_duration_seconds_bucket[5m])
+          ) > 2.0
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "High API p99 latency"
+          description: "p99 latency is {{ $value }}s"
+
+      - alert: APIPodsDown
+        expr: |
+          kube_deployment_status_replicas_available{
+            deployment="hajeen-api",
+            namespace="hajeen-platform"
+          } < 2
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "Insufficient API pods available"
+          description: "Only {{ $value }} API pods available"
+
+  - name: hajeen-inference-alerts
+    rules:
+      - alert: InferenceHighLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(inference_request_duration_seconds_bucket[5m])
+          ) > 5.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Inference p95 latency > 5s"
+          description: "Current p95: {{ $value }}s"
+
+      - alert: GPUMemoryHigh
+        expr: |
+          (dcgm_fb_used / dcgm_fb_total) > 0.95
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "GPU memory utilization critical"
+          description: "GPU {{ $labels.gpu }} at {{ $value | humanizePercentage }}"
+
+  - name: hajeen-worker-alerts
+    rules:
+      - alert: CeleryQueueBacklog
+        expr: |
+          celery_queue_length{queue="default"} > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Celery queue backlog building"
+          description: "Queue {{ $labels.queue }} has {{ $value }} tasks"
+
+      - alert: WorkerDown
+        expr: |
+          celery_workers_online < 2
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Insufficient Celery workers online"
+          description: "Only {{ $value }} workers online"

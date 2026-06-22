@@ -1,0 +1,90 @@
+# ══════════════════════════════════════════════════════════════════════
+# Hajeen Platform — .gitignore
+# ══════════════════════════════════════════════════════════════════════
+
+# ── Secrets & Environment ─────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+secrets/
+*.secret
+
+# ── Model Weights & Checkpoints ──────────────────────────────────────
+checkpoints/
+training_output/
+model_weights/
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.gguf
+*.ggml
+
+# ── Training Artifacts ───────────────────────────────────────────────
+training_logs/
+tokenizer_output/
+data/hf_datasets/
+data/processed/
+storage_data/
+
+# ── Python ───────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+eggs/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ── Virtual Environments ─────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# ── Testing ──────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+*.xml
+junit/
+
+# ── IDEs & Editors ───────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Logs ─────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Notebooks ────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── Temporary Files ──────────────────────────────────────────────────
+tmp/
+temp/
+*.tmp
+*.bak
+
+# ── HuggingFace Cache ────────────────────────────────────────────────
+.cache/
+~/.cache/huggingface/
+
+# ── Docker ───────────────────────────────────────────────────────────
+.dockerignore
+
+# ── OS ───────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride

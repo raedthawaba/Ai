@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hajeen-inference-gpu
+  namespace: hajeen-platform
+  labels:
+    app: hajeen-inference
+    type: gpu
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hajeen-inference
+  template:
+    metadata:
+      labels:
+        app: hajeen-inference
+        type: gpu
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+    spec:
+      nodeSelector:
+        accelerator: nvidia-gpu
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1002
+      containers:
+      - name: inference
+        image: hajeen-platform/inference:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8001
+          name: http
+        - containerPort: 8002
+          name: grpc
+        env:
+        - name: TENSOR_PARALLEL_SIZE
+          value: "1"
+        - name: MAX_BATCH_SIZE
+          value: "32"
+        - name: GPU_MEMORY_UTILIZATION
+          value: "0.90"
+        envFrom:
+        - configMapRef:
+            name: hajeen-app-config
+        - secretRef:
+            name: hajeen-secrets
+        resources:
+          requests:
+            memory: "8Gi"
+            cpu: "2000m"
+            nvidia.com/gpu: "1"
+          limits:
+            memory: "16Gi"
+            cpu: "8000m"
+            nvidia.com/gpu: "1"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8001
+          initialDelaySeconds: 60
+          periodSeconds: 10
+        volumeMounts:
+        - name: model-storage
+          mountPath: /models
+        - name: shm
+          mountPath: /dev/shm
+      volumes:
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: model-storage-pvc
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: "8Gi"
