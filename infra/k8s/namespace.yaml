@@ -1,8 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: hajeen-platform
-  labels:
-    app.kubernetes.io/name: hajeen-platform
-    app.kubernetes.io/part-of: hajeen-ai
-    environment: production
