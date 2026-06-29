@@ -1,97 +1,170 @@
 from __future__ import annotations
-import logging
-from typing import Dict, Any, List, Callable, Optional
-from hajeen_platform.services.self_evolution.self_reflection_engine import SelfReflectionEngine
-from hajeen_platform.services.self_evolution.episodic_memory import EpisodicMemory
+
 import json
+import logging
+import re
+from typing import Any, Callable, Dict, List, Optional
+
+from hajeen_platform.services.self_evolution.episodic_memory import EpisodicMemory
+from hajeen_platform.services.self_evolution.self_reflection_engine import SelfReflectionEngine
 
 logger = logging.getLogger(__name__)
 
-class CuriosityEngine:
-    """Guides agents to explore new actions, tools, or strategies when current approaches are insufficient."""
+_STRATEGY_PROMPT = """You are an AI exploration strategist. The agent is stuck or underperforming and needs to explore new approaches.
 
-    def __init__(self, 
-                 llm_inference_function: Callable,
-                 reflection_engine: SelfReflectionEngine,
-                 episodic_memory: EpisodicMemory,
-                 exploration_threshold: float = 0.3):
+Task Context: {task_context}
+Available Tools: {tools}
+Recent Failures: {recent_failures}
+Agent Confidence: {confidence}
+
+Suggest a novel exploration strategy that avoids the previously failed approaches.
+Consider: alternative tool combinations, problem decomposition changes, external information sources.
+
+Respond ONLY with valid JSON:
+{{
+  "strategy_description": "use tool X combined with Y to approach the problem from angle Z",
+  "suggested_actions": [
+    "action step 1",
+    "action step 2"
+  ],
+  "rationale": "why this approach might succeed where others failed",
+  "estimated_success_prob": 0.65
+}}"""
+
+_EVALUATE_EXPLORATION_PROMPT = """Evaluate the outcome of an exploration strategy.
+
+Strategy Used: {strategy}
+Exploration Results: {results}
+
+Was the exploration useful? What was learned?
+
+Respond ONLY with valid JSON:
+{{
+  "evaluation_summary": "summary of what happened",
+  "success_score": 3,
+  "lessons_learned": ["lesson 1", "lesson 2"],
+  "worth_repeating": false
+}}"""
+
+
+class CuriosityEngine:
+    """
+    Guides agents to explore new actions and strategies when confidence is
+    low or repeated failures are detected.
+    """
+
+    def __init__(
+        self,
+        llm_inference_function: Callable,
+        reflection_engine: SelfReflectionEngine,
+        episodic_memory: EpisodicMemory,
+        exploration_threshold: float = 0.3,
+        failure_threshold: int = 2,
+    ) -> None:
         self.llm_inference_function = llm_inference_function
         self.reflection_engine = reflection_engine
         self.episodic_memory = episodic_memory
-        self.exploration_threshold = exploration_threshold # e.g., confidence score below this triggers exploration
-        logger.info("CuriosityEngine initialized.")
+        self.exploration_threshold = exploration_threshold
+        self.failure_threshold = failure_threshold
+        logger.info("CuriosityEngine initialised (threshold=%.2f).", exploration_threshold)
 
-    async def decide_to_explore(self, 
-                                current_task_context: Dict[str, Any],
-                                agent_confidence: float,
-                                recent_failures: int = 0) -> bool:
-        """Decides if an agent should initiate an exploration phase."""
+    async def decide_to_explore(
+        self,
+        current_task_context: Dict[str, Any],
+        agent_confidence: float,
+        recent_failures: int = 0,
+    ) -> bool:
+        """Return True if the agent should enter an exploration phase."""
         if agent_confidence < self.exploration_threshold:
-            logger.info(f"Low confidence ({agent_confidence}) detected. Suggesting exploration.")
+            logger.info("Exploration triggered: low confidence (%.2f).", agent_confidence)
             return True
-        
-        # Check for repeated failures on similar tasks
-        if recent_failures > 2: # Arbitrary threshold for demonstration
-            logger.info(f"Repeated failures ({recent_failures}) detected. Suggesting exploration.")
+        if recent_failures >= self.failure_threshold:
+            logger.info("Exploration triggered: %d recent failures.", recent_failures)
             return True
 
-        # Placeholder for novelty detection (e.g., if task is completely new or unusual)
-        # This would involve comparing current task to past experiences in episodic memory
-        # For now, a simple check for low confidence or failures is used.
-        
-        logger.debug("No strong reason to explore based on current metrics.")
+        # Check novelty: is this task type unseen in episodic memory?
+        prompt_key = str(current_task_context.get("prompt", ""))[:80]
+        similar = self.episodic_memory.retrieve_experiences(prompt_key, top_k=3)
+        if not similar:
+            logger.info("Exploration triggered: novel task with no prior experience.")
+            return True
+
         return False
 
-    async def suggest_exploration_strategy(self, 
-                                           current_task_context: Dict[str, Any],
-                                           available_tools: List[str]) -> Dict[str, Any]:
-        """Suggests new tools, actions, or approaches for exploration based on context."""
-        exploration_prompt = f"""Given the current task context and available tools, suggest a novel exploration strategy.
-Task Context: {json.dumps(current_task_context, indent=2)}
-Available Tools: {', '.join(available_tools)}
+    async def suggest_exploration_strategy(
+        self,
+        current_task_context: Dict[str, Any],
+        available_tools: List[str],
+    ) -> Dict[str, Any]:
+        """Generate a novel exploration strategy using the LLM."""
+        failed_exps = self.episodic_memory.get_failed_experiences(top_k=3)
+        failed_summary = [e.get("outcome", "")[:100] for e in failed_exps]
 
-Consider strategies like:
-- Trying a different combination of existing tools.
-- Breaking down the problem into smaller, unconventional sub-problems.
-- Seeking external information from a broader source.
-- Re-evaluating assumptions about the task.
+        prompt = _STRATEGY_PROMPT.format(
+            task_context=json.dumps(current_task_context)[:600],
+            tools=", ".join(available_tools),
+            recent_failures=json.dumps(failed_summary),
+            confidence=current_task_context.get("confidence", "unknown"),
+        )
 
-Provide a JSON object with 'strategy_description' and 'suggested_actions' (list of strings).
-"""
-        logger.info("Generating exploration strategy...")
+        logger.info("Generating exploration strategy…")
+        return await self._call_and_parse(
+            prompt,
+            fallback={
+                "strategy_description": "Try a different combination of tools.",
+                "suggested_actions": ["Decompose the problem differently.", "Seek more context."],
+                "rationale": "Fallback strategy — LLM unavailable.",
+                "estimated_success_prob": 0.5,
+            },
+        )
+
+    async def evaluate_exploration_outcome(
+        self,
+        exploration_strategy: Dict[str, Any],
+        exploration_results: str,
+    ) -> Dict[str, Any]:
+        """Evaluate what was learned from an exploration phase."""
+        prompt = _EVALUATE_EXPLORATION_PROMPT.format(
+            strategy=json.dumps(exploration_strategy)[:400],
+            results=exploration_results[:600],
+        )
+        logger.info("Evaluating exploration outcome…")
+        return await self._call_and_parse(
+            prompt,
+            fallback={
+                "evaluation_summary": "Evaluation unavailable.",
+                "success_score": 1,
+                "lessons_learned": [],
+                "worth_repeating": False,
+            },
+        )
+
+    # ── Private ─────────────────────────────────────────────────────────
+
+    async def _call_and_parse(
+        self, prompt: str, fallback: Dict[str, Any]
+    ) -> Dict[str, Any]:
         try:
-            strategy_response = await self.llm_inference_function(exploration_prompt)
+            raw = await self.llm_inference_function(prompt)
+            parsed = self._parse_json(raw)
+            if parsed:
+                return parsed
+        except Exception as exc:
+            logger.error("CuriosityEngine LLM call failed: %s", exc)
+        return fallback
 
-            strategy_data = json.loads(strategy_response)
-            logger.info("Exploration strategy generated.")
-            return strategy_data
-        except Exception as e:
-            logger.error(f"Error generating exploration strategy: {e}")
-            return {"error": str(e), "strategy_description": "Failed to generate strategy.", "suggested_actions": []}
-
-    async def evaluate_exploration_outcome(self, 
-                                           exploration_strategy: Dict[str, Any],
-                                           exploration_results: str) -> Dict[str, Any]:
-        """Evaluates the outcome of an exploration phase using the reflection engine."""
-        evaluation_prompt = f"""Evaluate the effectiveness of the following exploration strategy and its results.
-Exploration Strategy: {json.dumps(exploration_strategy, indent=2)}
-Exploration Results: {exploration_results}
-
-Critique the exploration: Was it successful? Did it yield useful insights? How could it be improved?
-Provide a JSON object with 'evaluation_summary', 'success_score' (1-5), and 'lessons_learned' (list of strings).
-"""
-        logger.info("Evaluating exploration outcome...")
-        # Use the reflection engine's LLM call for this, or a direct LLM call
+    @staticmethod
+    def _parse_json(raw: str) -> Optional[Dict[str, Any]]:
+        if not raw:
+            return None
+        raw = raw.strip()
+        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group())
+            except json.JSONDecodeError:
+                pass
         try:
-            evaluation_response = await self.llm_inference_function(evaluation_prompt)
-
-            evaluation_data = json.loads(evaluation_response)
-            logger.info("Exploration outcome evaluated.")
-            return evaluation_data
-        except Exception as e:
-            logger.error(f"Error evaluating exploration outcome: {e}")
-            return {"error": str(e), "evaluation_summary": "Failed to evaluate outcome.", "success_score": 1, "lessons_learned": []}
-
-
-
-print("Curiosity and exploration engine created.")
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return None
