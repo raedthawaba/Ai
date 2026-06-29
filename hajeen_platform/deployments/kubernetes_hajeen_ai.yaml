@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hajeen-ai-deployment
+  labels:
+    app: hajeen-ai
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: hajeen-ai
+  template:
+    metadata:
+      labels:
+        app: hajeen-ai
+    spec:
+      containers:
+      - name: hajeen-ai-container
+        image: hajeen-ai-image:latest # Replace with your actual Docker image
+        ports:
+        - containerPort: 8000
+        env:
+        - name: RAY_ADDRESS
+          value: "ray://ray-cluster-k8s.ray.svc.cluster.local:10001"
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hajeen-ai-service
+spec:
+  selector:
+    app: hajeen-ai
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+  type: LoadBalancer

@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: triton-inference-server
+  labels:
+    app: triton
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: triton
+  template:
+    metadata:
+      labels:
+        app: triton
+    spec:
+      containers:
+      - name: triton-container
+        image: nvcr.io/nvidia/tritonserver:23.09-py3 # Use a suitable Triton image
+        command: ["tritonserver"]
+        args: ["--model-repository=/models"]
+        ports:
+        - containerPort: 8000 # HTTP/REST
+        - containerPort: 8001 # GRPC
+        - containerPort: 8002 # Metrics
+        volumeMounts:
+        - name: model-volume
+          mountPath: /models
+        resources:
+          limits:
+            nvidia.com/gpu: 1 # Request 1 GPU
+            memory: "16Gi"
+          requests:
+            memory: "8Gi"
+      volumes:
+      - name: model-volume
+        persistentVolumeClaim:
+          claimName: triton-model-pvc # Assumes a PVC is created for model storage
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: triton-service
+spec:
+  selector:
+    app: triton
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 8000
+    - name: grpc
+      protocol: TCP
+      port: 8001
+      targetPort: 8001
+  type: LoadBalancer

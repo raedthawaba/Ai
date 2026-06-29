@@ -51,3 +51,85 @@ def test_alignment_pipeline(tmp_path):
     
     path = pipeline.build_preference_dataset(raw_data, "pipe_test.jsonl")
     assert os.path.exists(path)
+
+@pytest.mark.asyncio
+async def test_dpo_pipeline_init():
+    model = MockModel()
+    ref_model = MockModel()
+    tokenizer = MockTokenizer()
+    pipeline = DPOPipeline(model, ref_model, tokenizer)
+    assert pipeline is not None
+
+@pytest.mark.asyncio
+async def test_dpo_prepare_preference_data():
+    model = MockModel()
+    ref_model = MockModel()
+    tokenizer = MockTokenizer()
+    pipeline = DPOPipeline(model, ref_model, tokenizer)
+    
+    preferences = [
+        {"prompt": "P1", "chosen_response": "C1", "rejected_response": "R1"},
+        {"prompt": "P2", "chosen_response": "C2", "rejected_response": "R2"},
+    ]
+    processed_data = pipeline.prepare_preference_data(preferences)
+    assert len(processed_data) == 2
+    assert processed_data[0] == ("P1", "C1", "R1")
+
+@pytest.mark.asyncio
+async def test_dpo_run_pipeline():
+    model = MockModel()
+    ref_model = MockModel()
+    tokenizer = MockTokenizer()
+    pipeline = DPOPipeline(model, ref_model, tokenizer)
+    
+    preferences = [
+        {"prompt": "P1", "chosen_response": "C1", "rejected_response": "R1"},
+    ]
+    results = await pipeline.run_pipeline(preferences, epochs=1)
+    assert results["status"] == "completed"
+    assert results["average_loss"] > 0
+
+@pytest.mark.asyncio
+async def test_rlhf_infrastructure_init():
+    policy_model = MockPolicyModel()
+    reward_model = MockRewardModel()
+    tokenizer = MockTokenizer()
+    infra = RLHFInfrastructure(policy_model, reward_model, tokenizer)
+    assert infra is not None
+
+@pytest.mark.asyncio
+async def test_rlhf_collect_human_feedback():
+    policy_model = MockPolicyModel()
+    reward_model = MockRewardModel()
+    tokenizer = MockTokenizer()
+    infra = RLHFInfrastructure(policy_model, reward_model, tokenizer)
+    
+    prompts = ["Prompt A", "Prompt B"]
+    feedback = await infra.collect_human_feedback(prompts)
+    assert len(feedback) == 2
+    assert "chosen_response" in feedback[0]
+
+@pytest.mark.asyncio
+async def test_rlhf_train_reward_model():
+    policy_model = MockPolicyModel()
+    reward_model = MockRewardModel()
+    tokenizer = MockTokenizer()
+    infra = RLHFInfrastructure(policy_model, reward_model, tokenizer)
+    
+    feedback = [
+        {"prompt": "P1", "chosen_response": "C1", "rejected_response": "R1"},
+    ]
+    results = await infra.train_reward_model(feedback)
+    assert results["status"] == "reward_model_trained"
+
+@pytest.mark.asyncio
+async def test_rlhf_run_pipeline():
+    policy_model = MockPolicyModel()
+    reward_model = MockRewardModel()
+    tokenizer = MockTokenizer()
+    infra = RLHFInfrastructure(policy_model, reward_model, tokenizer)
+    
+    initial_prompts = ["Prompt X"]
+    results = await infra.run_rlhf_pipeline(initial_prompts, reward_model_epochs=1, ppo_steps=1)
+    assert results["status"] == "completed"
+    assert results["average_ppo_loss"] > 0

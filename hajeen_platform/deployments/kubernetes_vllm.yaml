@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-deployment
+  labels:
+    app: vllm
+spec:
+  replicas: 1 # Typically 1 replica per GPU for vLLM
+  selector:
+    matchLabels:
+      app: vllm
+  template:
+    metadata:
+      labels:
+        app: vllm
+    spec:
+      containers:
+      - name: vllm-container
+        image: vllm/vllm-openai:latest # Use vLLM's OpenAI compatible server image
+        ports:
+        - containerPort: 8000
+        env:
+        - name: MODEL
+          value: "mistralai/Mistral-7B-Instruct-v0.2" # Specify the model to load
+        resources:
+          limits:
+            nvidia.com/gpu: 1 # Request 1 GPU
+            memory: "32Gi"
+          requests:
+            memory: "16Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-service
+spec:
+  selector:
+    app: vllm
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+  type: LoadBalancer
