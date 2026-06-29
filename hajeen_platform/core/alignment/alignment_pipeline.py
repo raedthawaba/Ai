@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 from .preference_dataset import PreferenceDatasetBuilder
 from .reward_model import RewardModelPipeline
 from .dpo_trainer import DPOTrainerWrapper, DPOConfig
+from .ppo_trainer import PPOTrainerWrapper, PPOConfig
 from .evaluation_system import AlignmentEvaluator
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,13 @@ class AlignmentPipeline:
         # This is a high-level orchestration method
         logger.info("DPO alignment process initiated via pipeline")
         return {"status": "initiated", "config": dpo_config}
+
+    def run_ppo_alignment(self, ppo_config: PPOConfig, dataset: Any) -> Dict[str, Any]:
+        """Run the PPO alignment process."""
+        trainer = PPOTrainerWrapper(ppo_config)
+        # Note: Model and Tokenizer would be loaded and passed here in a full execution
+        logger.info("PPO alignment process initiated via pipeline")
+        return {"status": "initiated", "config": ppo_config}
 
     def evaluate_alignment(self, prompt: str, response: str, context: Optional[str] = None) -> Dict[str, Any]:
         """Evaluate a response's alignment."""
