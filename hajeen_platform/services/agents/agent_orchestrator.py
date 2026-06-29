@@ -11,6 +11,7 @@ from .execution_agent import ExecutionAgent
 from .memory_agent import MemoryAgent
 from .tool_agent import ToolAgent
 from .autonomous.autonomous_agent import AutonomousAgent
+from .multi_agent.collaborative_layer import CollaborativeIntelligence
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,9 @@ class AgentOrchestrator:
         self._pipeline = ["planner", "retrieval", "execution"]
         if self._llm:
             self._agents["autonomous"] = AutonomousAgent(name="autonomous_agent", llm=self._llm, agent_manager=self, max_iterations=self.max_iterations)
+        
+        # Initialize Multi-Agent Collaborative Layer
+        self.collaborative_layer = CollaborativeIntelligence(agents=list(self._agents.values()))
 
     def register_agent(self, name: str, agent: BaseAgent) -> None:
         self._agents[name] = agent
