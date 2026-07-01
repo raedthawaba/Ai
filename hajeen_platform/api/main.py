@@ -360,11 +360,17 @@ async def on_startup():
     except Exception as exc:
         logger.error("startup: فشل تهيئة RAG Pipeline — %s", exc)
 
-    # 5. تهيئة LLM Manager
+    # 5. تهيئة LLM Manager + Mistral Fine-tuned
     try:
         from core.llm.llm_manager import get_llm_manager
         from core.llm.provider_registry import ProviderRegistry
         ProviderRegistry.auto_register_defaults()
+        try:
+            from core.llm.providers.mistral_finetuned_provider import MistralFinetunedProvider
+            ProviderRegistry.register("mistral_finetuned", MistralFinetunedProvider)
+            logger.info("startup: Mistral Fine-tuned provider مسجّل ✓")
+        except Exception:
+            pass
         manager = get_llm_manager()
         await manager.initialize()
         logger.info("startup: LLM Manager جاهز ✓ (provider=%s)", manager.settings.provider)
@@ -398,6 +404,26 @@ async def on_startup():
         logger.info("startup: AI Metrics جاهز ✓")
     except Exception as exc:
         logger.warning("startup: فشل تهيئة AI Metrics — %s", exc)
+
+    # 9. تهيئة Redis Service
+    try:
+        from services.redis.redis_service import get_redis_service
+        redis_svc = get_redis_service()
+        await redis_svc.connect()
+        app.state.redis = redis_svc
+        logger.info("startup: Redis Service جاهز ✓")
+    except Exception as exc:
+        logger.warning("startup: فشل تهيئة Redis — %s", exc)
+
+    # 10. تهيئة PostgreSQL
+    try:
+        import os as _os
+        if _os.getenv("DATABASE_URL", "").startswith("postgresql"):
+            from database.models import init_db
+            await init_db()
+            logger.info("startup: PostgreSQL جاهز ✓")
+    except Exception as exc:
+        logger.warning("startup: PostgreSQL غير متاح — %s", exc)
 
     logger.info("Hajeen AI Platform v1.1.0 — جاهز بالكامل ✅")
 
@@ -438,6 +464,16 @@ async def on_shutdown():
 
 # ── Routers ──────────────────────────────────────────────────────────────
 
+# ── Auth Middleware (يحمي جميع الـ routes) ────────────────────────────────
+import os as _os
+if _os.getenv("ENABLE_AUTH", "true").lower() == "true":
+    try:
+        from security.middleware.auth_middleware import AuthMiddleware
+        app.add_middleware(AuthMiddleware, enable_rate_limiting=True)
+        logger.info("startup: Auth Middleware مفعّل ✓")
+    except Exception as _e:
+        logger.warning("Auth Middleware غير متاح: %s", _e)
+
 from api.v1.router import router as v1_router  # noqa: E402
 app.include_router(v1_router, prefix="/api/v1")
 
@@ -461,6 +497,14 @@ try:
     logger.info("startup: Hajeen Model v1 router مسجّل ✓")
 except Exception as _e:
     logger.warning("Hajeen Model router غير متاح: %s", _e)
+
+# ── Auth Router ────────────────────────────────────────────────────────────
+try:
+    from api.v1.auth.router import router as auth_router
+    app.include_router(auth_router, prefix="/api/v1")
+    logger.info("startup: Auth router مسجّل ✓")
+except Exception as _e:
+    logger.warning("Auth router غير متاح: %s", _e)
 
 logger.info("Hajeen AI Platform API v1.1.0 — تمّ تسجيل جميع الـ routers")
 
