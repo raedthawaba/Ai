@@ -1,0 +1,59 @@
+{
+  "title": "Hajeen AI Platform Overview",
+  "uid": "hajeen-overview",
+  "version": 1,
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["hajeen", "ai", "production"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "API Requests/sec",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "targets": [{"expr": "rate(http_requests_total[5m])", "legendFormat": "req/s"}]
+    },
+    {
+      "id": 2,
+      "title": "API Latency P95 (ms)",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+      "targets": [{"expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) * 1000", "legendFormat": "p95 ms"}]
+    },
+    {
+      "id": 3,
+      "title": "Active AI Sessions",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+      "targets": [{"expr": "hajeen_active_sessions", "legendFormat": "sessions"}]
+    },
+    {
+      "id": 4,
+      "title": "Redis Memory (MB)",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+      "targets": [{"expr": "redis_memory_used_bytes / 1024 / 1024", "legendFormat": "MB"}]
+    },
+    {
+      "id": 5,
+      "title": "Request Rate by Endpoint",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "targets": [{"expr": "rate(http_requests_total[5m])", "legendFormat": "{{path}}"}]
+    },
+    {
+      "id": 6,
+      "title": "Inference Latency",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "targets": [{"expr": "hajeen_inference_latency_ms", "legendFormat": "latency ms"}]
+    },
+    {
+      "id": 7,
+      "title": "Error Rate",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 12},
+      "targets": [{"expr": "rate(http_requests_total{status=~'5..'}[5m])", "legendFormat": "5xx errors"}]
+    }
+  ]
+}
