@@ -1,0 +1,22 @@
+# Hajeen Brain v2 — متطلبات إضافية
+# جميع المكتبات الأساسية موجودة في requirements.txt الرئيسي
+
+# اختياري — للاستخلاص الدلالي (Semantic Memory)
+# sentence-transformers>=2.2.0
+
+# اختياري — Knowledge Graph المتقدم
+# neo4j>=5.0.0
+# networkx>=3.0
+
+# اختياري — التدريب (Continuous Learning)
+# peft>=0.10.0
+# trl>=0.8.0
+# bitsandbytes>=0.41.0
+
+# المكتبات الأساسية المستخدمة (موجودة بالفعل في المشروع):
+# fastapi
+# pydantic
+# httpx
+# asyncio (standard library)
+# pathlib (standard library)
+# json (standard library)

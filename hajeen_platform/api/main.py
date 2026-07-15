@@ -511,3 +511,15 @@ logger.info("Hajeen AI Platform API v1.1.0 — تمّ تسجيل جميع الـ
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)
+
+# ── Hajeen Brain v2 Router ────────────────────────────────────────────────
+try:
+    import sys as _sys
+    _brain_path = str(__import__('pathlib').Path(__file__).parent.parent)
+    if _brain_path not in _sys.path:
+        _sys.path.insert(0, _brain_path)
+    from brain.api.brain_router import router as brain_router
+    app.include_router(brain_router, prefix="/api/v1")
+    logger.info("startup: Hajeen Brain v2 router مسجّل ✓")
+except Exception as _e:
+    logger.warning("Hajeen Brain v2 router غير متاح: %s", _e)
