@@ -1,19 +1,20 @@
 """
 Goal Manager — محوّل الطلبات إلى أهداف قابلة للتنفيذ
 ======================================================
-يستخرج الهدف النهائي للمستخدم، النية، مستوى التعقيد، المجال، والمهام المطلوبة.
-لا يعتمد على LLM لاتخاذ القرار — يستخدم اللغة النموذجية فقط للتحليل.
+    يستخرج الهدف النهائي للمستخدم، النية، مستوى التعقيد، المجال، والمهام المطلوبة.
+    يعتمد على LLM لاتخاذ القرار — يستخدم اللغة النموذجية للتحليل والاستنتاج.
 """
 from __future__ import annotations
 
 import json
 import logging
-import re
 import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
+
+from hajeen_platform.brain.llm_analyzer import analyze_with_llm, LLMAnalysisResult
 
 logger = logging.getLogger(__name__)
 
@@ -125,15 +126,15 @@ class GoalManager:
 
     async def analyze(self, user_request: str, context: Optional[Dict] = None) -> Goal:
         """تحليل الطلب وتوليد الهدف."""
-        text_lower = user_request.lower()
+        llm_analysis = await analyze_with_llm(user_request)
 
-        intent = self._detect_intent(text_lower)
-        complexity = self._detect_complexity(text_lower)
-        domain = self._detect_domain(text_lower)
-        sub_tasks = self._generate_sub_tasks(intent, complexity, domain, user_request)
-        required_tools = self._suggest_tools(intent, domain, sub_tasks)
-        suitable_models = self._suggest_models(intent, complexity, domain)
-        final_objective = self._extract_objective(user_request, intent)
+        intent = IntentType(llm_analysis.intent)
+        complexity = ComplexityLevel(llm_analysis.complexity)
+        domain = llm_analysis.domain
+        sub_tasks = llm_analysis.sub_tasks
+        required_tools = llm_analysis.required_tools
+        suitable_models = llm_analysis.suitable_models
+        final_objective = llm_analysis.final_objective
 
         goal = Goal(
             goal_id=str(uuid.uuid4()),
@@ -155,129 +156,7 @@ class GoalManager:
         )
         return goal
 
-    def _detect_intent(self, text: str) -> IntentType:
-        scores: Dict[IntentType, int] = {t: 0 for t in IntentType}
-        for intent, patterns in INTENT_PATTERNS.items():
-            for p in patterns:
-                if p in text:
-                    scores[intent] += 1
-        best = max(scores, key=lambda k: scores[k])
-        return best if scores[best] > 0 else IntentType.CONVERSATION
 
-    def _detect_complexity(self, text: str) -> ComplexityLevel:
-        for level in [ComplexityLevel.ENTERPRISE, ComplexityLevel.COMPLEX, ComplexityLevel.MEDIUM]:
-            for indicator in COMPLEXITY_INDICATORS[level]:
-                if indicator in text:
-                    return level
-        return ComplexityLevel.SIMPLE
-
-    def _detect_domain(self, text: str) -> str:
-        scores: Dict[str, int] = {d: 0 for d in DOMAIN_KEYWORDS}
-        for domain, keywords in DOMAIN_KEYWORDS.items():
-            for kw in keywords:
-                if kw in text:
-                    scores[domain] += 1
-        best = max(scores, key=lambda k: scores[k])
-        return best if scores[best] > 0 else "general"
-
-    def _generate_sub_tasks(
-        self, intent: IntentType, complexity: ComplexityLevel,
-        domain: str, request: str
-    ) -> List[str]:
-        tasks: List[str] = []
-
-        if intent == IntentType.TRAINING:
-            tasks = [
-                "جمع البيانات وفحصها",
-                "تنظيف البيانات وإزالة التكرار",
-                "تحليل جودة البيانات",
-                "إعداد dataset للتدريب",
-                "اختيار النموذج الأساسي",
-                "تهيئة بيئة التدريب",
-                "تنفيذ التدريب / Fine-tuning",
-                "تقييم النموذج",
-                "نشر النموذج",
-                "مراقبة الأداء",
-            ]
-        elif intent == IntentType.CODE:
-            tasks = [
-                "تحليل المتطلبات",
-                "تصميم البنية",
-                "كتابة الكود",
-                "اختبار الوظائف",
-                "مراجعة وتحسين الكود",
-            ]
-        elif intent == IntentType.RESEARCH:
-            tasks = [
-                "تحديد نطاق البحث",
-                "جمع المصادر والمراجع",
-                "تحليل المعلومات",
-                "تلخيص النتائج",
-                "تقديم التوصيات",
-            ]
-        elif intent == IntentType.ANALYSIS:
-            tasks = [
-                "جمع البيانات المطلوبة",
-                "تحليل الأنماط",
-                "المقارنة والتقييم",
-                "استخلاص النتائج",
-            ]
-        elif intent == IntentType.DATA:
-            tasks = [
-                "تحميل البيانات",
-                "فحص جودة البيانات",
-                "تنظيف وتحويل البيانات",
-                "تخزين النتائج",
-            ]
-        elif complexity == ComplexityLevel.SIMPLE:
-            tasks = ["معالجة الطلب مباشرةً", "تقديم الإجابة"]
-        else:
-            tasks = ["تحليل الطلب", "تخطيط الخطوات", "التنفيذ", "مراجعة النتائج"]
-
-        return tasks
-
-    def _suggest_tools(self, intent: IntentType, domain: str, tasks: List[str]) -> List[str]:
-        tools: List[str] = ["hajeen_brain"]
-        if domain in ("nlp", "training"):
-            tools += ["training_pipeline", "dataset_builder", "model_evaluator"]
-        if domain == "rag":
-            tools += ["vector_search", "document_loader", "rag_engine"]
-        if domain == "code":
-            tools += ["code_executor", "syntax_checker"]
-        if domain == "data":
-            tools += ["data_cleaner", "quality_scorer"]
-        if intent == IntentType.RESEARCH:
-            tools += ["web_search", "summarizer"]
-        return list(dict.fromkeys(tools))
-
-    def _suggest_models(self, intent: IntentType, complexity: ComplexityLevel, domain: str) -> List[str]:
-        models: List[str] = []
-        if domain == "arabic" or domain == "nlp":
-            models.append("qwen2.5-7b")
-        if complexity in (ComplexityLevel.COMPLEX, ComplexityLevel.ENTERPRISE):
-            models += ["qwen2.5-72b", "openai/gpt-4o"]
-        if intent == IntentType.CODE:
-            models.append("qwen2.5-coder-7b")
-        models += ["ollama/llama3", "hajeen-local"]
-        return list(dict.fromkeys(models))
-
-    def _extract_objective(self, request: str, intent: IntentType) -> str:
-        mapping = {
-            IntentType.TRAINING: "تدريب وتحسين نموذج لغوي",
-            IntentType.CODE: "كتابة وتطوير كود برمجي",
-            IntentType.RESEARCH: "بحث وجمع معلومات شاملة",
-            IntentType.ANALYSIS: "تحليل وتقييم البيانات أو المفاهيم",
-            IntentType.CREATIVE: "توليد محتوى إبداعي",
-            IntentType.DATA: "معالجة وتنظيف البيانات",
-            IntentType.PLANNING: "وضع خطة تفصيلية",
-            IntentType.QUESTION: "الإجابة على السؤال",
-            IntentType.CONVERSATION: "المحادثة والتفاعل",
-            IntentType.TASK: "تنفيذ المهمة المطلوبة",
-        }
-        base = mapping.get(intent, "تلبية طلب المستخدم")
-        # اقتطع الطلب الأصلي للتوضيح
-        snippet = request[:80] + "..." if len(request) > 80 else request
-        return f"{base}: {snippet}"
 
     def get_goal(self, goal_id: str) -> Optional[Goal]:
         return self._goals.get(goal_id)

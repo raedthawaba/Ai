@@ -145,7 +145,8 @@ class TaskDecomposer:
             # تحديد الأداة والنموذج بناءً على اسم المهمة
             assigned_model, assigned_tool = self._assign_resources(sub_task_name, goal)
             # تحديد نمط التنفيذ
-            mode = self._determine_mode(i, goal)
+            previous_task_name = tasks[-1].name if tasks else None
+            mode = self._determine_mode(i, goal, sub_task_name, previous_task_name)
             # التبعيات
             depends = [previous_id] if previous_id and mode == ExecutionMode.SEQUENTIAL else []
 
@@ -191,13 +192,26 @@ class TaskDecomposer:
 
         return model, tool
 
-    def _determine_mode(self, index: int, goal: Goal) -> ExecutionMode:
+    def _determine_mode(self, index: int, goal: Goal, current_task_name: str, previous_task_name: Optional[str]) -> ExecutionMode:
+        # Simple tasks are always sequential
         if goal.complexity == ComplexityLevel.SIMPLE:
             return ExecutionMode.SEQUENTIAL
-        # المهام الأولى تعمل بالتسلسل، ثم يمكن التوازي
-        if index < 2:
-            return ExecutionMode.SEQUENTIAL
-        return ExecutionMode.PARALLEL if goal.complexity == ComplexityLevel.ENTERPRISE else ExecutionMode.SEQUENTIAL
+
+        # Heuristics for potential parallelism
+        # If the task explicitly mentions 'parallel' or 'concurrent'
+        if "بالتوازي" in current_task_name or "متزامن" in current_task_name:
+            return ExecutionMode.PARALLEL
+
+        # If previous task is a data collection and current is another data collection
+        if previous_task_name and ("جمع البيانات" in previous_task_name and "جمع البيانات" in current_task_name):
+            return ExecutionMode.PARALLEL
+
+        # If tasks are independent (e.g., analysis of different aspects)
+        if goal.intent in [IntentType.ANALYSIS, IntentType.RESEARCH] and goal.complexity != ComplexityLevel.SIMPLE:
+            return ExecutionMode.PARALLEL
+
+        # Default to sequential for most cases, especially for complex workflows where order matters
+        return ExecutionMode.SEQUENTIAL
 
     def _assign_priority(self, index: int, goal: Goal) -> TaskPriority:
         if index == 0:
