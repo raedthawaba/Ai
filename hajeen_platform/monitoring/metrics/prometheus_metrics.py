@@ -193,6 +193,44 @@ inference_errors_total = _counter(
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Self-Reflection Metrics
+# ──────────────────────────────────────────────────────────────────────────────
+hajeen_reflection_reports_total = _counter(
+    "hajeen_reflection_reports_total",
+    "Total self-reflection reports generated",
+    ["status", "goal_id"],
+)
+hajeen_reflection_score_overall = _gauge(
+    "hajeen_reflection_score_overall",
+    "Overall reflection score",
+    ["goal_id"],
+)
+hajeen_reflection_latency_seconds = _histogram(
+    "hajeen_reflection_latency_seconds",
+    "Self-reflection process latency",
+    buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0],
+)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Self-Evolution Metrics
+# ──────────────────────────────────────────────────────────────────────────────
+hajeen_evolution_proposals_total = _counter(
+    "hajeen_evolution_proposals_total",
+    "Total self-evolution proposals generated",
+    ["type", "status"],
+)
+hajeen_evolution_implementation_total = _counter(
+    "hajeen_evolution_implementation_total",
+    "Total self-evolution proposals implemented",
+    ["type", "status"],
+)
+hajeen_evolution_evaluation_latency_seconds = _histogram(
+    "hajeen_evolution_evaluation_latency_seconds",
+    "Self-evolution proposal evaluation latency",
+    buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0],
+)
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Memory & Worker Metrics
 # ──────────────────────────────────────────────────────────────────────────────
 worker_active_count = _gauge(

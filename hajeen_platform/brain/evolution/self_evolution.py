@@ -12,6 +12,12 @@ from ..policy.policy_engine import PolicyEngine, get_policy_engine, DynamicPolic
 from ..reflection.self_reflection import SelfReflection, get_self_reflection, ReflectionReport
 from ..decision_engine import DecisionEngine, get_decision_engine
 from ..goal_manager import Goal, IntentType, ComplexityLevel
+from hajeen_platform.monitoring.metrics.prometheus_metrics import (
+    hajeen_evolution_proposals_total,
+    hajeen_evolution_implementation_total,
+    hajeen_evolution_evaluation_latency_seconds,
+    track_latency
+)
 
 logger = logging.getLogger(__name__)
 
@@ -91,13 +97,14 @@ class SelfEvolution:
             confidence=0.95
         )
 
-        try:
-            decision = await self._decision_engine.decide(
-                task_id=f"propose_evolution_{report.report_id}",
-                goal=goal,
-                task_name="generate_evolution_proposal",
-                context=report.to_dict()
-            )
+        with track_latency(hajeen_evolution_evaluation_latency_seconds):
+            try:
+                decision = await self._decision_engine.decide(
+                    task_id=f"propose_evolution_{report.report_id}",
+                    goal=goal,
+                    task_name="generate_evolution_proposal",
+                    context=report.to_dict()
+                )
 
             if not decision.primary_model:
                 logger.warning("SelfEvolution: No model selected by DecisionEngine for proposal generation.")
@@ -117,12 +124,15 @@ class SelfEvolution:
             self._proposals.append(proposal)
             self._save_proposal(proposal)
             logger.info("SelfEvolution: Generated proposal %s: %s", proposal.proposal_id, proposal.description)
+            hajeen_evolution_proposals_total.labels(type=proposal.type, status="generated").inc()
             return proposal
         except json.JSONDecodeError as e:
             logger.error("SelfEvolution: Failed to decode LLM response JSON: %s", e)
+            hajeen_evolution_proposals_total.labels(type="unknown", status="error").inc()
             return None
         except Exception as e:
             logger.error("SelfEvolution: Error generating proposal: %s", e)
+            hajeen_evolution_proposals_total.labels(type="unknown", status="error").inc()
             return None
 
     async def evaluate_and_implement(self, proposal: EvolutionProposal) -> bool:
@@ -154,13 +164,14 @@ class SelfEvolution:
             confidence=0.98
         )
 
-        try:
-            decision = await self._decision_engine.decide(
-                task_id=f"evaluate_evolution_{proposal.proposal_id}",
-                goal=goal,
-                task_name="evaluate_evolution_proposal",
-                context=proposal.to_dict()
-            )
+        with track_latency(hajeen_evolution_evaluation_latency_seconds):
+            try:
+                decision = await self._decision_engine.decide(
+                    task_id=f"evaluate_evolution_{proposal.proposal_id}",
+                    goal=goal,
+                    task_name="evaluate_evolution_proposal",
+                    context=proposal.to_dict()
+                )
 
             if not decision.primary_model:
                 logger.warning("SelfEvolution: No model selected by DecisionEngine for proposal evaluation.")
@@ -183,11 +194,14 @@ class SelfEvolution:
                     proposal.implemented_at = time.time()
                     proposal.status = 'implemented'
                     logger.info("SelfEvolution: Proposal %s implemented successfully.", proposal.proposal_id)
+                    hajeen_evolution_implementation_total.labels(type=proposal.type, status="success").inc()
                 else:
                     proposal.status = 'rejected' # Implementation failed
                     logger.warning("SelfEvolution: Proposal %s implementation failed.", proposal.proposal_id)
+                    hajeen_evolution_implementation_total.labels(type=proposal.type, status="failed").inc()
             else:
                 logger.info("SelfEvolution: Proposal %s rejected: %s", proposal.proposal_id, proposal.evaluation_result)
+            hajeen_evolution_proposals_total.labels(type=proposal.type, status="rejected").inc()
 
             self._save_proposal(proposal)
             return proposal.status == 'implemented'
@@ -197,12 +211,14 @@ class SelfEvolution:
             proposal.status = 'rejected'
             proposal.evaluation_result = f"Failed to decode LLM evaluation JSON: {e}"
             self._save_proposal(proposal)
+            hajeen_evolution_proposals_total.labels(type=proposal.type, status="error").inc()
             return False
         except Exception as e:
             logger.error("SelfEvolution: Error evaluating or implementing proposal: %s", e)
             proposal.status = 'rejected'
             proposal.evaluation_result = f"Error: {e}"
             self._save_proposal(proposal)
+            hajeen_evolution_proposals_total.labels(type=proposal.type, status="error").inc()
             return False
 
     async def _implement_change(self, change_type: str, change_data: Dict[str, Any]) -> bool:

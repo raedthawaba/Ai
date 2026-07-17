@@ -21,6 +21,13 @@ from ..decision_engine import DecisionEngine, get_decision_engine
 from ..model_router import ModelRouter, get_model_router
 from ..policy.policy_engine import PolicyEngine, get_policy_engine
 from ..metrics.model_performance_db import ModelPerformanceDB, get_performance_db
+from hajeen_platform.brain.goal_manager import Goal, IntentType, ComplexityLevel
+from hajeen_platform.monitoring.metrics.prometheus_metrics import (
+    hajeen_reflection_reports_total,
+    hajeen_reflection_score_overall,
+    hajeen_reflection_latency_seconds,
+    track_latency
+)
 
 logger = logging.getLogger(__name__)
 
@@ -191,6 +198,10 @@ class SelfReflection:
             "self_reflection: task=%s overall=%.2f plan=%.2f efficiency=%.2f quality=%.2f",
             task_id, overall, plan_score, efficiency_score, response_quality
         )
+
+        # Prometheus Metrics
+        hajeen_reflection_reports_total.labels(status="success", goal_id=goal_id).inc()
+        hajeen_reflection_score_overall.labels(goal_id=goal_id).set(report.overall_score)
         return report
 
     async def _generate_lessons(
@@ -319,12 +330,13 @@ class SelfReflection:
                 suitable_models=[],
                 confidence=0.9
             )
-            decision = await self._decision_engine.decide(
-                task_id=str(uuid.uuid4()),
-                goal=goal,
-                task_name="reflection_analysis",
-                context=report_data
-            )
+            with track_latency(hajeen_reflection_latency_seconds):
+                decision = await self._decision_engine.decide(
+                    task_id=str(uuid.uuid4()),
+                    goal=goal,
+                    task_name="reflection_analysis",
+                    context=report_data
+                )
             if not decision.primary_model:
                 logger.warning("SelfReflection: No model selected by DecisionEngine for reflection_analysis.")
                 return []
@@ -364,6 +376,7 @@ class SelfReflection:
 
         except Exception as e:
             logger.error("SelfReflection: Error calling LLM for reflection: %s", e)
+            hajeen_reflection_reports_total.labels(status="error", goal_id="unknown").inc()
             return []
 
     def get_average_scores(self) -> Dict[str, float]:
