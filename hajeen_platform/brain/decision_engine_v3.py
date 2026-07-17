@@ -685,23 +685,71 @@ class DecisionEngineV3:
         return ResourceType.LOCAL_MODEL
 
     async def _get_model_quality(self, model_id: str) -> float:
-        """الحصول على درجة جودة النموذج."""
+        """
+        الحصول على درجة جودة النموذج ديناميكياً من ثلاثة مصادر بالأولوية:
+        1. قاعدة بيانات الأداء الحقيقي (ModelPerformanceDB)
+        2. سجل النماذج المدرَّبة محلياً (model_registry.json)
+        3. قيم مرجعية موثقة كحد أدنى
+        """
+        # ── المصدر 1: قاعدة بيانات الأداء الحقيقي ─────────────────────
         if self.performance_db:
             try:
                 stats = await self.performance_db.get_model_statistics(model_id)
-                return stats.get("quality_score", 0.7)
-            except:
-                pass
-        
-        # قيم افتراضية
-        default_quality = {
-            "openai/gpt-4o": 0.95,
-            "openai/gpt-4o-mini": 0.85,
-            "qwen2.5-72b": 0.90,
-            "qwen2.5-7b": 0.80,
-            "ollama/llama3": 0.75,
+                if stats and stats.get("quality_score", 0) > 0:
+                    logger.debug(
+                        "decision_engine: quality for %s from perf_db = %.3f",
+                        model_id, stats["quality_score"],
+                    )
+                    return float(stats["quality_score"])
+            except Exception as e:
+                logger.debug("decision_engine: perf_db unavailable for %s: %s", model_id, e)
+
+        # ── المصدر 2: سجل النماذج المدرَّبة محلياً ───────────────────────
+        try:
+            import json as _json
+            from pathlib import Path as _Path
+            registry_path = _Path("storage_data/brain/learning/model_registry.json")
+            if registry_path.exists() and model_id.startswith("hajeen"):
+                with open(registry_path, "r", encoding="utf-8") as _f:
+                    registry = _json.load(_f)
+                for m in reversed(registry.get("models", [])):
+                    if m.get("model_version", "") == model_id or m.get("status") == "active":
+                        acc = m.get("evaluation", {}).get("accuracy", 0)
+                        if acc > 0:
+                            quality = min(0.99, acc * 1.1)
+                            logger.debug(
+                                "decision_engine: quality for %s from registry = %.3f",
+                                model_id, quality,
+                            )
+                            return quality
+        except Exception:
+            pass
+
+        # ── المصدر 3: قيم مرجعية موثقة ───────────────────────────────────
+        KNOWN_QUALITY: dict = {
+            "openai/gpt-4o":                  0.96,
+            "openai/gpt-4o-mini":             0.87,
+            "openai/gpt-4-turbo":             0.94,
+            "anthropic/claude-3-5-sonnet":    0.95,
+            "anthropic/claude-3-haiku":       0.84,
+            "qwen2.5-72b":                    0.91,
+            "qwen2.5-32b":                    0.87,
+            "qwen2.5-14b":                    0.83,
+            "qwen2.5-7b":                     0.79,
+            "qwen2.5-1.5b":                   0.70,
+            "ollama/llama3":                  0.76,
+            "ollama/llama3:8b":               0.76,
+            "ollama/llama3:70b":              0.88,
+            "ollama/mistral":                 0.74,
+            "ollama/deepseek-r1":             0.85,
         }
-        return default_quality.get(model_id, 0.7)
+        model_lower = model_id.lower()
+        for k, v in KNOWN_QUALITY.items():
+            if k in model_lower or model_lower in k:
+                return v
+
+        logger.debug("decision_engine: no quality data for %s, using default 0.70", model_id)
+        return 0.70
 
     async def _get_model_performance(self, model_id: str, goal: Goal) -> float:
         """الحصول على درجة الأداء."""

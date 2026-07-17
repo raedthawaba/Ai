@@ -40,6 +40,9 @@ from .policy.policy_engine import PolicyEngine, PolicyDecision, get_policy_engin
 from .metrics.model_performance_db import ModelPerformanceDB, get_performance_db
 from .sovereignty.sovereignty_layer import SovereigntyLayer, get_sovereignty_layer
 from .improvement.autonomous_improvement import AutonomousImprovement, get_autonomous_improvement
+from .cognitive_layer.intent_analyzer import IntentAnalyzer, Intent, get_intent_analyzer
+from .cognitive_layer.context_analyzer import ContextAnalyzer, ContextAnalysis, get_context_analyzer
+from .cognitive_layer.reasoning_engine import ReasoningEngine, ReasoningResult, get_reasoning_engine
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +210,13 @@ class HajeenBrainV3:
         self.sovereignty: SovereigntyLayer = get_sovereignty_layer()
         self.improvement: AutonomousImprovement = get_autonomous_improvement()
         self.collaborator: MultiModelCollaborator = get_multi_model_collaborator(self.model_router)
+
+        # ── المكوّنات المعرفية (Cognitive Layer) ────────────────────────
+        self.intent_analyzer: IntentAnalyzer = get_intent_analyzer()
+        self.context_analyzer: ContextAnalyzer = get_context_analyzer(
+            memory_fabric=self.memory
+        )
+        self.reasoning_engine: ReasoningEngine = get_reasoning_engine()
         
         # تحديث Decision Engine
         self.decision_engine._performance_db = self.performance_db
@@ -276,41 +286,89 @@ class HajeenBrainV3:
                 )
             
             # ── Step 2: Intent Analyzer — فهم النية الحقيقية (استدلالي) ─────
-            # هذا سيتم تطويره في المرحلة الثانية
-            # الآن نستخدم goal_manager كبديل مؤقت
             t2 = time.perf_counter()
-            goal = await self.goal_manager.analyze(
-                request.user_message,
+            intent: Intent = await self.intent_analyzer.analyze(
+                user_message=request.user_message,
                 context={"session_id": request.session_id, **request.context},
             )
             trace.intent_analysis = {
-                "intent": goal.intent,
-                "confidence": goal.confidence,
-                "latency_ms": (time.perf_counter() - t2) * 1000,
+                "intent_id": intent.intent_id,
+                "category": intent.category.value if hasattr(intent.category, "value") else str(intent.category),
+                "primary_intent": intent.primary_intent,
+                "secondary_intents": intent.secondary_intents,
+                "implicit_requirements": intent.implicit_requirements,
+                "confidence": intent.confidence,
+                "reasoning": intent.reasoning,
+                "latency_ms": round((time.perf_counter() - t2) * 1000, 1),
             }
+
+            # ── Goal Analysis ──────────────────────────────────────────────
+            t2b = time.perf_counter()
+            goal = await self.goal_manager.analyze(
+                request.user_message,
+                context={
+                    "session_id": request.session_id,
+                    "intent": intent.primary_intent,
+                    **request.context,
+                },
+            )
             trace.goal_analysis = {
                 "goal_id": goal.goal_id,
                 "final_objective": goal.final_objective,
                 "complexity": goal.complexity,
                 "domain": goal.domain,
-                "latency_ms": (time.perf_counter() - t2) * 1000,
+                "latency_ms": round((time.perf_counter() - t2b) * 1000, 1),
             }
             
             # ── Step 3: Context Analyzer — تحليل السياق والذاكرة ──────────
-            # سيتم تطويره في المرحلة الثانية
             t3 = time.perf_counter()
+            ctx_analysis: ContextAnalysis = await self.context_analyzer.analyze(
+                user_message=request.user_message,
+                session_id=request.session_id,
+                user_id=request.user_id,
+                additional_context={
+                    "intent": intent.primary_intent,
+                    "goal": goal.final_objective,
+                    **request.context,
+                },
+            )
             trace.context_analysis = {
-                "session_id": request.session_id,
+                "analysis_id": ctx_analysis.analysis_id,
+                "detected_domain": ctx_analysis.detected_domain,
+                "domain_expertise": ctx_analysis.domain_expertise_level,
+                "estimated_complexity": ctx_analysis.estimated_complexity,
+                "relevant_memories_count": len(ctx_analysis.relevant_memories),
+                "constraints": ctx_analysis.constraints,
+                "priorities": ctx_analysis.priorities,
+                "time_sensitivity": ctx_analysis.time_sensitivity,
                 "conversation_length": len(conversation.get_window()),
-                "latency_ms": (time.perf_counter() - t3) * 1000,
+                "confidence": ctx_analysis.confidence,
+                "latency_ms": round((time.perf_counter() - t3) * 1000, 1),
             }
             
             # ── Step 4: Reasoning Engine — استدلال عميق ─────────────────
-            # سيتم تطويره في المرحلة الثانية
             t4 = time.perf_counter()
+            reasoning: ReasoningResult = await self.reasoning_engine.reason(
+                problem=request.user_message,
+                context={
+                    "intent": intent.primary_intent,
+                    "goal": goal.final_objective,
+                    "domain": ctx_analysis.detected_domain,
+                    "complexity": ctx_analysis.estimated_complexity,
+                    "constraints": ctx_analysis.constraints,
+                    "relevant_memories": ctx_analysis.relevant_memories[:3],
+                },
+            )
             trace.reasoning_result = {
-                "reasoning_type": "placeholder",
-                "latency_ms": (time.perf_counter() - t4) * 1000,
+                "result_id": reasoning.result_id,
+                "strategy": reasoning.strategy.value if hasattr(reasoning.strategy, "value") else str(reasoning.strategy),
+                "recommended_solution": reasoning.recommended_solution.title if reasoning.recommended_solution else None,
+                "steps_count": len(reasoning.reasoning_steps),
+                "risks_count": len(reasoning.risks),
+                "options_count": len(reasoning.solution_options),
+                "confidence": reasoning.confidence,
+                "missing_info": reasoning.missing_information,
+                "latency_ms": round((time.perf_counter() - t4) * 1000, 1),
             }
             
             # ── Step 5: Task Decomposer — تفكيك إلى مهام ───────────────────

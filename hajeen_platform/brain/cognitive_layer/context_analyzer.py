@@ -282,19 +282,71 @@ class ContextAnalyzer:
     ) -> List[Dict[str, Any]]:
         """استرجاع الذاكرة ذات الصلة باستخدام البحث الدلالي."""
         try:
-            # الحصول على embedding للرسالة
+            import numpy as np
+
+            # ── الحصول على embedding للرسالة الحالية ─────────────────────
             message_embedding = await self.embedding_manager.embed(user_message)
-            
-            # البحث عن ذاكرة مشابهة
-            # (هذا يعتمد على تطبيق MemoryFabric)
-            long_term_memory = self.memory_fabric.get_long_term_memory(session_id)
-            
-            # استرجاع آخر 5 ذاكرة ذات صلة
-            # (يمكن تحسينها باستخدام vector search)
-            memories = []
-            # placeholder للآن
-            
-            return memories
+
+            # ── البحث الدلالي في الذاكرة طويلة الأمد ────────────────────
+            long_term = self.memory_fabric.get_long_term_memory(session_id)
+            all_keys = long_term.list_keys() if hasattr(long_term, "list_keys") else []
+
+            scored: list = []
+            for key in all_keys:
+                entry = long_term.recall(key)
+                if entry is None:
+                    continue
+                content_str = entry.get("content", str(entry)) if isinstance(entry, dict) else str(entry)
+                try:
+                    entry_emb = await self.embedding_manager.embed(content_str[:512])
+                    a = np.array(message_embedding, dtype=float)
+                    b = np.array(entry_emb, dtype=float)
+                    norm_a = np.linalg.norm(a)
+                    norm_b = np.linalg.norm(b)
+                    score = float(np.dot(a, b) / (norm_a * norm_b)) if norm_a > 0 and norm_b > 0 else 0.0
+                    scored.append((score, key, content_str, entry))
+                except Exception:
+                    continue
+
+            scored.sort(key=lambda x: x[0], reverse=True)
+            memories: list = []
+            for score, key, content_str, raw_entry in scored[:5]:
+                if score >= 0.4:
+                    memories.append({
+                        "key": key,
+                        "content": content_str[:300],
+                        "relevance_score": round(score, 3),
+                        "metadata": raw_entry.get("metadata", {}) if isinstance(raw_entry, dict) else {},
+                    })
+
+            # ── البحث في الذاكرة الدلالية ─────────────────────────────────
+            try:
+                semantic = self.memory_fabric.semantic
+                sem_results = semantic.search(user_message, top_k=3)
+                for sem_entry in sem_results:
+                    memories.append({
+                        "key": sem_entry.key,
+                        "content": sem_entry.content[:300],
+                        "relevance_score": round(sem_entry.relevance, 3),
+                        "metadata": sem_entry.metadata,
+                    })
+            except Exception:
+                pass
+
+            # إزالة المكررات
+            seen_keys: set = set()
+            unique_memories: list = []
+            for m in memories:
+                if m["key"] not in seen_keys:
+                    seen_keys.add(m["key"])
+                    unique_memories.append(m)
+
+            logger.debug(
+                "context_analyzer: retrieved %d relevant memories for session=%s",
+                len(unique_memories), session_id,
+            )
+            return unique_memories[:7]
+
         except Exception as e:
             logger.warning("context_analyzer: failed to retrieve memories: %s", e)
             return []
