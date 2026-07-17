@@ -6,10 +6,27 @@ import json
 import logging
 import time
 import uuid
+from enum import Enum
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+
+class AuditAction(str, Enum):
+    LOGIN_SUCCESS     = "login:success"
+    LOGIN_FAILED      = "login:failed"
+    LOGOUT            = "logout"
+    APIKEY_CREATED    = "apikey:created"
+    APIKEY_VALIDATED  = "apikey:validated"
+    APIKEY_REVOKED    = "apikey:revoked"
+    PERMISSION_DENIED = "permission:denied"
+    RATE_LIMITED      = "rate:limited"
+    MODEL_INFERENCE   = "model:inference"
+    MODEL_TRAINING    = "model:training"
+    POLICY_UPDATE     = "policy:update"
+    SYSTEM_HEALTH     = "system:health"
+    CONFIG_CHANGE     = "config:change"
 
 
 @dataclass
@@ -49,7 +66,7 @@ class AuditLogger:
 
     def log(
         self,
-        action: str,
+        action: AuditAction,
         resource_type: str,
         resource_id: str,
         tenant_id: str,

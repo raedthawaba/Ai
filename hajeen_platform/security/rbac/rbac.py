@@ -56,6 +56,9 @@ class Permission(str, Enum):
     USERS_WRITE       = "users:write"
     USERS_DELETE      = "users:delete"
     APIKEYS_MANAGE    = "apikeys:manage"
+    APIKEYS_READ      = "apikeys:read"
+    APIKEYS_CREATE    = "apikeys:create"
+    APIKEYS_REVOKE    = "apikeys:revoke"
     AUDIT_READ        = "audit:read"
     CONFIG_WRITE      = "config:write"
     TRAINING_RUN      = "training:run"
@@ -111,6 +114,9 @@ _ROLE_PERMISSIONS: Dict[Role, FrozenSet[Permission]] = {
         Permission.INDEX_WRITE,
         Permission.EVALUATE,
         Permission.APIKEYS_MANAGE,
+        Permission.APIKEYS_READ,
+        Permission.APIKEYS_CREATE,
+        Permission.APIKEYS_REVOKE,
     }),
     Role.ADMIN: frozenset({
         Permission.HEALTH_READ,
@@ -137,6 +143,9 @@ _ROLE_PERMISSIONS: Dict[Role, FrozenSet[Permission]] = {
         Permission.USERS_READ,
         Permission.USERS_WRITE,
         Permission.APIKEYS_MANAGE,
+        Permission.APIKEYS_READ,
+        Permission.APIKEYS_CREATE,
+        Permission.APIKEYS_REVOKE,
         Permission.AUDIT_READ,
         Permission.TRAINING_RUN,
     }),
@@ -191,6 +200,10 @@ ROUTE_PERMISSIONS: Dict[str, Permission] = {
     "GET:/api/v1/storage/stats":               Permission.STORAGE_READ,
     "GET:/api/v1/auth/users":                  Permission.USERS_READ,
     "POST:/api/v1/auth/users":                 Permission.USERS_WRITE,
+    "GET:/api/v1/auth/apikeys":                Permission.APIKEYS_READ,
+    "POST:/api/v1/auth/apikeys":               Permission.APIKEYS_CREATE,
+    "GET:/api/v1/auth/apikeys/{key_id}":       Permission.APIKEYS_READ,
+    "DELETE:/api/v1/auth/apikeys/{key_id}":    Permission.APIKEYS_REVOKE,
     "GET:/api/v1/auth/audit":                  Permission.AUDIT_READ,
     "POST:/api/v1/auth/training/start":        Permission.TRAINING_RUN,
 }

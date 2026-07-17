@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 import jwt
+from hajeen_platform.security.auth.revoked_tokens import get_revoked_token_store
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ class JWTAuthenticator:
     ) -> None:
         self.secret = secret
         self.algorithm = algorithm
-        self.revoked_store = revoked_store
+        self.revoked_store = revoked_store or get_revoked_token_store()
 
     def issue_token(
         self,

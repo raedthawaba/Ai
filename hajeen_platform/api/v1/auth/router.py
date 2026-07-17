@@ -5,6 +5,7 @@ import logging
 import os
 import time
 import uuid
+from hajeen_platform.security.auth.api_key_manager import get_api_key_manager, APIKey
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, status
@@ -42,7 +43,7 @@ class RevokeRequest(BaseModel):
 
 class CreateAPIKeyRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
-    scopes: List[str] = Field(default=["chat", "search"])
+    roles: List[str] = Field(default=["user"]) # Changed from scopes to roles for consistency with RBAC
     expires_in_days: Optional[int] = Field(None, ge=1, le=365)
 
 
@@ -84,9 +85,10 @@ def _verify_password(password: str, stored_hash: str) -> bool:
 
 
 def _get_jwt_auth():
-    from security.auth.jwt_auth import JWTAuthenticator
+    from hajeen_platform.security.auth.jwt_auth import JWTAuthenticator
+    from hajeen_platform.security.auth.revoked_tokens import get_revoked_token_store
     import os
-    return JWTAuthenticator(secret=os.getenv("JWT_SECRET", JWT_SECRET))
+    return JWTAuthenticator(secret=os.getenv("JWT_SECRET", JWT_SECRET), revoked_store=get_revoked_token_store())
 
 
 # ── POST /auth/register ───────────────────────────────────────────────────────
@@ -187,9 +189,45 @@ async def refresh_token(body: RefreshRequest) -> TokenResponse:
 
 @router.post("/revoke", summary="إلغاء صلاحية التوكن")
 async def revoke_token(body: RevokeRequest) -> Dict[str, Any]:
-    jwt = _get_jwt_auth()
-    jwt.revoke_token(body.token)
+    jwt_auth = _get_jwt_auth()
+    jwt_auth.revoke_token(body.token)
     return {"success": True, "message": "تم إلغاء صلاحية التوكن"}
+
+
+@router.get("/apikeys", summary="قائمة مفاتيح API للمستخدم الحالي")
+async def list_api_keys(request: Request) -> Dict[str, Any]:
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="غير مصادق")
+    api_key_manager = get_api_key_manager()
+    keys = api_key_manager.get_all_keys_for_user(user_id)
+    return {"api_keys": [key.to_dict() for key in keys], "total": len(keys)}
+
+
+@router.get("/apikeys/{key_id}", summary="الحصول على تفاصيل مفتاح API")
+async def get_api_key_details(key_id: str, request: Request) -> Dict[str, Any]:
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="غير مصادق")
+    api_key_manager = get_api_key_manager()
+    api_key = api_key_manager.get_key_by_id(key_id)
+    if not api_key or api_key.user_id != user_id:
+        raise HTTPException(status_code=404, detail="مفتاح API غير موجود أو لا تملك صلاحية الوصول إليه")
+    return api_key.to_dict()
+
+
+@router.delete("/apikeys/{key_id}", summary="إلغاء مفتاح API")
+async def revoke_api_key(key_id: str, request: Request) -> Dict[str, Any]:
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="غير مصادق")
+    api_key_manager = get_api_key_manager()
+    api_key = api_key_manager.get_key_by_id(key_id)
+    if not api_key or api_key.user_id != user_id:
+        raise HTTPException(status_code=404, detail="مفتاح API غير موجود أو لا تملك صلاحية الوصول إليه")
+    if not api_key_manager.revoke_key(key_id):
+        raise HTTPException(status_code=500, detail="فشل إلغاء مفتاح API")
+    return {"success": True, "message": "تم إلغاء مفتاح API بنجاح"}
 
 
 # ── GET /auth/me ──────────────────────────────────────────────────────────────
@@ -219,19 +257,27 @@ async def create_api_key(body: CreateAPIKeyRequest, request: Request) -> Dict[st
     tenant_id = getattr(request.state, "tenant_id", "default")
 
     import secrets
-    raw_key = f"hj_{secrets.token_urlsafe(32)}"
-    key_id = uuid.uuid4().hex[:16]
+    api_key_manager = get_api_key_manager()
+    raw_key, api_key_obj = api_key_manager.generate_key(
+        user_id=user_id,
+        tenant_id=tenant_id,
+        roles=body.roles,
+        expires_in_seconds=body.expires_in_days * 86400 if body.expires_in_days else None,
+        metadata={"name": body.name}
+    )
+    key_id = api_key_obj.key_id
 
     logger.info("API key created: %s for user %s", key_id, user_id)
     return {
         "key_id": key_id,
         "key": raw_key,
         "name": body.name,
-        "scopes": body.scopes,
+        "roles": api_key_obj.roles,
         "user_id": user_id,
         "tenant_id": tenant_id,
-        "expires_in_days": body.expires_in_days,
+        "expires_at": api_key_obj.expires_at,
         "warning": "احفظ هذا المفتاح بأمان — لن يُعرض مرة أخرى",
+        "message": "تم إنشاء مفتاح API بنجاح. يرجى حفظه الآن."
     }
 
 

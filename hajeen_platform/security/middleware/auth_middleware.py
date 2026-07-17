@@ -12,8 +12,8 @@ from fastapi import HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from security.rbac.rbac import ROUTE_PERMISSIONS, Permission, has_permission
-from security.audit.audit_logger import AuditAction, get_audit_logger
+from hajeen_platform.security.rbac.rbac import ROUTE_PERMISSIONS, Permission, has_permission
+from hajeen_platform.security.audit.audit_logger import AuditAction, get_audit_logger
 
 logger = logging.getLogger(__name__)
 
@@ -70,8 +70,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
     def _lazy_init(self) -> None:
         if self._jwt_auth is None:
             try:
-                from security.auth.jwt_auth import JWTAuthenticator
+                from hajeen_platform.security.auth.jwt_auth import JWTAuthenticator
                 self._jwt_auth = JWTAuthenticator()
+            except Exception as e:
+                logger.warning("JWT auth init failed: %s", e)
+
+        if self._api_key_manager is None:
+            try:
+                from hajeen_platform.security.auth.api_key_manager import get_api_key_manager
+                self._api_key_manager = get_api_key_manager()
             except Exception as e:
                 logger.warning("JWT auth init failed: %s", e)
 
@@ -85,7 +92,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     socket_connect_timeout=2,
                 )
                 r.ping()
-                from security.rate_limit.rate_limiter import RateLimiter
+                from hajeen_platform.security.rate_limit.rate_limiter import RateLimiter
                 self._rate_limiter = RateLimiter(r)
             except Exception as e:
                 logger.warning("Rate limiter Redis unavailable: %s — skipping", e)
@@ -121,8 +128,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     request.state.claims = claims
                 except PermissionError as e:
                     self._audit.log(
-                        AuditAction.LOGIN_FAILED, "unknown", ip_address=ip,
-                        status="denied", details={"reason": str(e)},
+                        AuditAction.LOGIN_FAILED, "auth", "jwt_validation", tenant_id, user_id, ip_address=ip,
+                        status="denied", error=str(e),
                     )
                     return JSONResponse(
                         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -132,16 +139,21 @@ class AuthMiddleware(BaseHTTPMiddleware):
             elif token_type == "apikey" and self._api_key_manager:
                 api_key = self._api_key_manager.validate_key(token)
                 if not api_key:
+                    self._audit.log(
+                        AuditAction.LOGIN_FAILED, "auth", "api_key_validation", tenant_id, user_id, ip_address=ip,
+                        status="denied", error="API key invalid or expired",
+                    )
                     return JSONResponse(
                         status_code=status.HTTP_401_UNAUTHORIZED,
                         content={"error": "unauthorized", "message": "API key invalid or expired"},
                     )
                 user_id = api_key.user_id
                 tenant_id = api_key.tenant_id
-                roles = api_key.scopes
+                roles = api_key.roles # Use roles from APIKey object
                 request.state.user_id = user_id
                 request.state.tenant_id = tenant_id
                 request.state.roles = roles
+                request.state.api_key = api_key
         else:
             return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -159,7 +171,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 identifier=user_id, endpoint=endpoint_key, tenant_id=tenant_id
             )
             if not allowed:
-                self._audit.log_rate_limited(user_id, path, ip, tenant_id)
+                self._audit.log(
+                    AuditAction.RATE_LIMITED, "system", "rate_limiter", tenant_id, user_id, ip_address=ip,
+                    status="denied", metadata=meta
+                )
                 return JSONResponse(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                     content={
@@ -187,7 +202,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         )
 
         if required_permission and not has_permission(roles, required_permission):
-            self._audit.log_permission_denied(user_id, required_permission.value, path, ip, tenant_id)
+            self._audit.log(
+                AuditAction.PERMISSION_DENIED, "auth", "rbac_check", tenant_id, user_id, ip_address=ip,
+                status="denied", details={"permission": required_permission.value, "path": path}
+            )
             return JSONResponse(
                 status_code=status.HTTP_403_FORBIDDEN,
                 content={
