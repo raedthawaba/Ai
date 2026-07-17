@@ -4,6 +4,8 @@ from __future__ import annotations
 import asyncio
 import time
 from abc import ABC, abstractmethod
+from aiobreaker import CircuitBreaker, CircuitBreakerError
+from tenacity import retry, stop_after_attempt, wait_fixed, wait_exponential, retry_if_exception_type
 from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
@@ -22,6 +24,8 @@ class LLMConfig:
     max_retries: int = 3
     retry_delay: float = 1.0
     stream: bool = False
+    circuit_breaker_fail_max: int = 5
+    circuit_breaker_reset_timeout: int = 30
     extra: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -119,6 +123,11 @@ class BaseLLMProvider(ABC):
     def __init__(self, config: LLMConfig):
         self.config = config
         self._initialized = False
+        self._circuit_breaker = CircuitBreaker(
+            fail_max=self.config.circuit_breaker_fail_max,
+            reset_timeout=self.config.circuit_breaker_reset_timeout,
+            exclude=[LLMError] # Exclude our custom LLMError from tripping the breaker immediately
+        )
 
     @property
     def provider_name(self) -> str:
@@ -133,49 +142,51 @@ class BaseLLMProvider(ABC):
         self._initialized = True
 
     @abstractmethod
-    async def complete(self, request: LLMRequest) -> LLMResponse:
-        """تنفيذ inference وإرجاع استجابة كاملة."""
+    async def _complete_implementation(self, request: LLMRequest) -> LLMResponse:
+        """تنفيذ inference وإرجاع استجابة كاملة (يتم تغليفه بـ CircuitBreaker)."""
         ...
 
     @abstractmethod
-    async def stream(self, request: LLMRequest) -> AsyncGenerator[LLMStreamChunk, None]:
-        """تنفيذ streaming inference."""
+    async def _stream_implementation(self, request: LLMRequest) -> AsyncGenerator[LLMStreamChunk, None]:
+        """تنفيذ streaming inference (يتم تغليفه بـ CircuitBreaker)."""
         ...
+
+    async def complete(self, request: LLMRequest) -> LLMResponse:
+        """تنفيذ inference مع Circuit Breaker و Retry."""
+        
+        @retry(
+            stop=stop_after_attempt(self.config.max_retries),
+            wait=wait_exponential(multiplier=self.config.retry_delay, min=1, max=10),
+            retry=retry_if_exception_type((LLMProviderError, LLMTimeoutError)),
+            reraise=True
+        )
+        async def _call_with_retry():
+            try:
+                t0 = time.perf_counter()
+                response = await asyncio.wait_for(
+                    self._circuit_breaker.call(self._complete_implementation, request),
+                    timeout=self.config.timeout
+                )
+                response.latency_ms = (time.perf_counter() - t0) * 1000
+                return response
+            except asyncio.TimeoutError:
+                raise LLMTimeoutError(f"Provider '{self.provider_name}' timed out after {self.config.timeout}s")
+                
+        return await _call_with_retry()
+
+    async def stream(self, request: LLMRequest) -> AsyncGenerator[LLMStreamChunk, None]:
+        """تنفيذ streaming inference مع Circuit Breaker."""
+        # Streaming retries are complex and often not desired mid-stream.
+        # We'll rely on the circuit breaker for overall health and let the caller handle stream interruptions.
+        async for chunk in self._circuit_breaker.call(self._stream_implementation, request):
+            yield chunk
 
     @abstractmethod
     async def health_check(self) -> bool:
         """فحص صحة المزود."""
         ...
 
-    async def complete_with_retry(self, request: LLMRequest) -> LLMResponse:
-        """
-        تنفيذ inference مع retry logic و timeout handling.
-        """
-        last_error: Optional[Exception] = None
-        for attempt in range(self.config.max_retries):
-            try:
-                t0 = time.perf_counter()
-                response = await asyncio.wait_for(
-                    self.complete(request),
-                    timeout=self.config.timeout,
-                )
-                response.latency_ms = (time.perf_counter() - t0) * 1000
-                return response
-            except asyncio.TimeoutError:
-                last_error = LLMTimeoutError(
-                    f"Provider '{self.provider_name}' timed out after "
-                    f"{self.config.timeout}s (attempt {attempt + 1}/{self.config.max_retries})"
-                )
-            except LLMProviderError as e:
-                last_error = e
-                if attempt < self.config.max_retries - 1:
-                    await asyncio.sleep(self.config.retry_delay * (attempt + 1))
-            except Exception as e:
-                last_error = LLMError(f"Unexpected error: {e}")
-                if attempt < self.config.max_retries - 1:
-                    await asyncio.sleep(self.config.retry_delay * (attempt + 1))
 
-        raise last_error or LLMError("Unknown error after retries")
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} provider={self.provider_name} model={self.model_name}>"

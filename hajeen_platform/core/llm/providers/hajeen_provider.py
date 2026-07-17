@@ -26,7 +26,7 @@ class HajeenLLMProvider(BaseLLMProvider):
         self._initialized = True
         logger.info("HajeenLLMProvider initialized.")
 
-    async def complete(self, request: LLMRequest) -> LLMResponse:
+    async def _complete_implementation(self, request: LLMRequest) -> LLMResponse:
         """
         تنفيذ inference باستخدام HajeenProvider القديم.
         """
@@ -51,11 +51,11 @@ class HajeenLLMProvider(BaseLLMProvider):
             request_id=request.request_id,
         )
 
-    async def stream(self, request: LLMRequest) -> AsyncGenerator[LLMStreamChunk, None]:
+    async def _stream_implementation(self, request: LLMRequest) -> AsyncGenerator[LLMStreamChunk, None]:
         """
         HajeenProvider القديم لا يدعم streaming مباشرة، لذا سنقوم بمحاكاة ذلك.
         """
-        response = await self.complete(request)
+        response = await self._complete_implementation(request)
         yield LLMStreamChunk(delta=response.content, finish_reason="stop", index=0, model=self.model_name)
 
     async def health_check(self) -> bool:

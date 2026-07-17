@@ -97,18 +97,31 @@ class LLMManager:
         if not self._initialized:
             await self.initialize()
 
-        # فرض استخدام المزود المحلي 'hajeen' فقط كما طلب المستخدم
-        # مع الإبقاء على منطق المزودين الآخرين مسجلاً ولكن غير مفعل
-        pname = "hajeen"
-        
-        try:
-            provider = await self._ensure_provider(pname)
-            logger.debug("Forcing local provider: %s", pname)
-            response = await provider.complete_with_retry(request)
-            return response
-        except Exception as e:
-            logger.error("Local provider 'hajeen' failed: %s", e)
-            raise LLMError(f"Local provider 'hajeen' failed: {e}")
+        providers_to_try = []
+        if provider_name:
+            providers_to_try.append(provider_name)
+        else:
+            providers_to_try.append(self._primary_name)
+            providers_to_try.extend(self._fallback_names)
+
+        last_error: Optional[Exception] = None
+        for p_name in providers_to_try:
+            try:
+                provider = await self._ensure_provider(p_name)
+                response = await provider.complete(request)
+                return response
+            except CircuitBreakerError:
+                logger.warning(
+                    "Provider '%s' circuit is open. Trying next provider.", p_name
+                )
+                last_error = LLMError(f"Circuit breaker open for {p_name}")
+                continue
+            except Exception as e:
+                logger.error("Provider '%s' failed: %s", p_name, e)
+                last_error = e
+                continue
+
+        raise last_error or LLMError("All LLM providers failed after retries and fallbacks.")
 
     async def stream(
         self,
@@ -119,13 +132,33 @@ class LLMManager:
         if not self._initialized:
             await self.initialize()
 
-        # فرض استخدام المزود المحلي 'hajeen' في الـ streaming
-        pname = "hajeen"
-        provider = await self._ensure_provider(pname)
-        request.stream = True
+        providers_to_try = []
+        if provider_name:
+            providers_to_try.append(provider_name)
+        else:
+            providers_to_try.append(self._primary_name)
+            providers_to_try.extend(self._fallback_names)
 
-        async for chunk in provider.stream(request):
-            yield chunk
+        last_error: Optional[Exception] = None
+        for p_name in providers_to_try:
+            try:
+                provider = await self._ensure_provider(p_name)
+                request.stream = True
+                async for chunk in provider.stream(request):
+                    yield chunk
+                return # Stream completed successfully
+            except CircuitBreakerError:
+                logger.warning(
+                    "Provider '%s' circuit is open for streaming. Trying next provider.", p_name
+                )
+                last_error = LLMError(f"Circuit breaker open for {p_name} streaming")
+                continue
+            except Exception as e:
+                logger.error("Provider '%s' failed for streaming: %s", p_name, e)
+                last_error = e
+                continue
+
+        raise last_error or LLMError("All LLM providers failed for streaming after retries and fallbacks.")
 
     async def health_check_all(self) -> Dict[str, bool]:
         """فحص صحة جميع المزودين."""
