@@ -97,20 +97,24 @@ class ProviderRegistry:
     def auto_register_defaults(cls) -> None:
         """تسجيل تلقائي للمزودين الافتراضيين."""
         default_providers = [
-            ("core.llm.providers.mock_provider", "MockProvider", "mock", ["test", "fake"]),
-            ("core.llm.providers.openai_provider", "OpenAIProvider", "openai", ["gpt", "chatgpt"]),
-            ("core.llm.providers.huggingface_provider", "HuggingFaceProvider", "huggingface", ["hf"]),
-            ("core.llm.providers.ollama_provider", "OllamaProvider", "ollama", ["local"]),
-            ("core.llm.providers.llama_cpp_provider", "LlamaCppProvider", "llama_cpp", ["llama", "gguf"]),
-            ("core.llm.providers.hajeen_provider", "HajeenLLMProvider", "hajeen", ["hajeen_local"]),
+            ("hajeen_platform.core.llm.providers.mock_provider", "MockProvider", "mock", ["test", "fake"]),
+            ("hajeen_platform.core.llm.providers.openai_provider", "OpenAIProvider", "openai", ["gpt", "chatgpt"]),
+            ("hajeen_platform.core.llm.providers.huggingface_provider", "HuggingFaceProvider", "huggingface", ["hf"]),
+            ("hajeen_platform.core.llm.providers.ollama_provider", "OllamaProvider", "ollama", ["local"]),
+            ("hajeen_platform.core.llm.providers.llama_cpp_provider", "LlamaCppProvider", "llama_cpp", ["llama", "gguf"]),
+            ("hajeen_platform.core.llm.providers.hajeen_provider", "HajeenLLMProvider", "hajeen", ["hajeen_local"]),
         ]
         for module_path, class_name, name, aliases in default_providers:
             try:
                 module = importlib.import_module(module_path)
                 provider_class = getattr(module, class_name)
                 cls.register(name, provider_class, aliases=aliases)
+
+
             except (ImportError, AttributeError) as e:
-                logger.debug("Skipped auto-registering '%s': %s", name, e)
+                logger.debug("Skipped auto-registering %s: %s", name, e)
+
+
 
     @classmethod
     def clear(cls) -> None:

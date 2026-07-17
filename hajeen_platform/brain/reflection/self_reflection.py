@@ -16,7 +16,11 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+from ..decision_engine import DecisionEngine, get_decision_engine
+from ..model_router import ModelRouter, get_model_router
+from ..policy.policy_engine import PolicyEngine, get_policy_engine
+from ..metrics.model_performance_db import ModelPerformanceDB, get_performance_db
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +88,20 @@ class SelfReflection:
         self._path.mkdir(parents=True, exist_ok=True)
         self._reports: List[ReflectionReport] = []
         self._lessons_db: List[str] = []  # دروس مجمّعة
+        self._decision_engine: Optional[DecisionEngine] = None
+        self._model_router: Optional[ModelRouter] = None
+        self._policy_engine: Optional[PolicyEngine] = None
+        self._model_performance_db: Optional[ModelPerformanceDB] = None
+
+    async def initialize(self) -> None:
+        if self._decision_engine is None:
+            self._decision_engine = await get_decision_engine()
+        if self._model_router is None:
+            self._model_router = get_model_router()
+        if self._policy_engine is None:
+            self._policy_engine = get_policy_engine()
+        if self._model_performance_db is None:
+            self._model_performance_db = get_performance_db()
 
     async def reflect(
         self,
@@ -121,13 +139,13 @@ class SelfReflection:
         overall = (plan_score * 0.3 + efficiency_score * 0.3 + response_quality * 0.4)
 
         # الدروس والتوصيات
-        lessons = self._generate_lessons(
+        lessons = await self._generate_lessons(
             was_plan_good, correct_model, cost_can_reduce, quality_can_increase,
-            actual_latency_ms, token_ratio
+            actual_latency_ms, token_ratio, model_used, response_quality
         )
-        recommendations = self._generate_recommendations(
+        recommendations = await self._generate_recommendations(
             was_plan_good, correct_model, cost_can_reduce,
-            model_used, response_quality
+            model_used, response_quality, actual_latency_ms, context, estimated_tokens
         )
 
         # اقتراح نموذج أفضل
@@ -175,9 +193,9 @@ class SelfReflection:
         )
         return report
 
-    def _generate_lessons(
+    async def _generate_lessons(
         self, good_plan: bool, correct_model: bool, reduce_cost: bool,
-        increase_quality: bool, latency_ms: float, token_ratio: float
+        increase_quality: bool, latency_ms: float, token_ratio: float, model_used: str, quality: float
     ) -> List[str]:
         lessons = []
         if not good_plan:
@@ -190,11 +208,26 @@ class SelfReflection:
             lessons.append("الجودة تحت 85% — فكّر في نموذج أقوى أو RAG")
         if not lessons:
             lessons.append("أداء ممتاز — حافظ على هذا النهج")
+        # Use LLM for more nuanced lessons
+        llm_lessons = await self._call_llm_for_reflection(
+            "generate_lessons",
+            report_data={
+                "was_plan_good": good_plan,
+                "correct_model_used": correct_model,
+                "cost_can_be_reduced": reduce_cost,
+                "quality_can_increase": increase_quality,
+                "actual_latency_ms": latency_ms,
+                "token_efficiency_ratio": token_ratio,
+                "model_used": model_used,
+                "response_quality": quality
+            }
+        )
+        lessons.extend(llm_lessons)
         return lessons
 
-    def _generate_recommendations(
+    async def _generate_recommendations(
         self, good_plan: bool, correct_model: bool,
-        reduce_cost: bool, model: str, quality: float
+        reduce_cost: bool, model: str, quality: float, latency_ms: float, context: Dict[str, Any], estimated_tokens: int
     ) -> List[str]:
         recs = []
         if not good_plan:
@@ -205,6 +238,49 @@ class SelfReflection:
             recs.append("أضف قاعدة في Policy Engine لتقليل التوكنز")
         if quality < 0.7:
             recs.append("أضف RAG لتعزيز السياق في المهام المشابهة")
+        # Use LLM for more nuanced recommendations
+        llm_recs = await self._call_llm_for_reflection(
+            "generate_recommendations",
+            report_data={
+                "was_plan_good": good_plan,
+                "correct_model_used": correct_model,
+                "cost_can_be_reduced": reduce_cost,
+                "model_used": model,
+                "response_quality": quality
+            }
+        )
+        recs.extend(llm_recs)
+
+        # Apply recommendations to other systems if applicable
+        if not correct_model:
+            # Example: Update model performance in DB
+            # Example: Update model performance in DB
+            # Infer provider from model_used (simple heuristic)
+            provider = "openai" if "openai" in model.lower() else "ollama"
+            # Infer task_type and domain from context, or use generic values
+            task_type = context.get("task_type", "general_reflection")
+            domain = context.get("domain", "reflection")
+            success = quality >= 0.7 # Assuming quality >= 0.7 means success
+
+            self._model_performance_db.record_call(
+                model_id=model,
+                provider=provider,
+                task_type=task_type,
+                domain=domain,
+                latency_ms=latency_ms,
+                tokens_used=estimated_tokens, # Using estimated tokens for recording
+                quality_score=quality,
+                success=success,
+                cost_usd=0.0 # Placeholder, actual cost calculation is complex
+            )
+        if reduce_cost:
+            # Example: Add a policy to reduce tokens for similar tasks
+            await self._policy_engine.add_policy(
+                name=f"Reduce_Tokens_for_{model}",
+                description=f"Reduce max_tokens for {model} when estimated tokens are exceeded.",
+                rules={"model": model, "token_efficiency_ratio_gt": 1.3},
+                action={"type": "reduce_max_tokens", "factor": 0.8}
+            )
         return recs
 
     def _save_report(self, report: ReflectionReport) -> None:
@@ -224,6 +300,72 @@ class SelfReflection:
     def get_recent_reports(self, limit: int = 10) -> List[Dict]:
         return [r.to_dict() for r in self._reports[-limit:]]
 
+    async def _call_llm_for_reflection(self, reflection_type: str, report_data: Dict[str, Any]) -> List[str]:
+        """يستدعي LLM لإجراء استدلال أعمق حول التقييم الذاتي."""
+        prompt = f"بصفتك محرك استدلال لـ Hajeen AI، قم بتحليل تقرير التقييم الذاتي التالي واستخرج دروسًا مستفادة أو توصيات بناءً على نوع التقييم المطلوب:\n\nنوع التقييم: {reflection_type}\nبيانات التقرير: {json.dumps(report_data, indent=2)}\n\nاستخرج قائمة من النقاط الموجزة (bullet points) باللغة العربية. ركز على الاستدلال العميق وليس مجرد إعادة صياغة البيانات."
+
+        try:
+            # Use DecisionEngine to select the best model for reflection
+            from ..goal_manager import Goal, IntentType, ComplexityLevel
+            goal = Goal(
+                goal_id=str(uuid.uuid4()),
+                intent=IntentType.REASONING,
+                domain="reflection",
+                complexity=ComplexityLevel.MEDIUM,
+                original_request="Analyze reflection report",
+                final_objective="Generate lessons and recommendations from reflection report",
+                sub_tasks=[],
+                required_tools=[],
+                suitable_models=[],
+                confidence=0.9
+            )
+            decision = await self._decision_engine.decide(
+                task_id=str(uuid.uuid4()),
+                goal=goal,
+                task_name="reflection_analysis",
+                context=report_data
+            )
+            if not decision.primary_model:
+                logger.warning("SelfReflection: No model selected by DecisionEngine for reflection_analysis.")
+                return []
+
+            # Assuming DecisionEngine provides a way to get the LLM response
+            # This part needs actual implementation based on how DecisionEngine integrates with LLMs
+            # For now, we'll simulate a call or use a direct LLM call if DecisionEngine doesn't abstract it fully
+            # For demonstration, let's assume a direct call via a mock or simple LLM interface
+            # In a real scenario, self._decision_engine.execute_task would be used.
+            # For now, let's mock the LLM call or use a simple placeholder.
+            # This is a placeholder for actual LLM interaction through DecisionEngine
+            # In a real system, DecisionEngine would return the LLM response directly.
+            mock_llm_response = {
+                "generate_lessons": [
+                    "تحليل أعمق: قد تكون المشكلة في تصميم الخطة الأولية وليس فقط عدد الخطوات.",
+                    "تحسين اختيار النموذج: يجب أن يأخذ في الاعتبار تعقيد المهمة وليس فقط السرعة الأولية."
+                ],
+                "generate_recommendations": [
+                    "تحديث قاعدة بيانات الأداء: يجب تسجيل الأسباب الجذرية لضعف الأداء.",
+                    "تعديل محرك السياسات: إضافة سياسة لفرض استخدام RAG للمهام التي تتطلب جودة عالية."
+                ]
+            }
+            # In a real scenario, this would be an actual LLM call via DecisionEngine
+            # Use DecisionEngine to execute the LLM task
+            llm_response = await self._decision_engine.execute_llm_task(
+                model_id=decision.primary_model,
+                prompt=prompt,
+                temperature=0.5, # Reflection tasks usually benefit from lower temperature
+                max_tokens=500
+            )
+            # Assuming the LLM response content is a bulleted list in Arabic
+            # We need to parse it into a list of strings
+            if llm_response and llm_response.content:
+                # Simple parsing for bullet points
+                return [line.strip() for line in llm_response.content.split('\n') if line.strip().startswith('-') or line.strip().startswith('*')]
+            return []
+
+        except Exception as e:
+            logger.error("SelfReflection: Error calling LLM for reflection: %s", e)
+            return []
+
     def get_average_scores(self) -> Dict[str, float]:
         if not self._reports:
             return {"plan": 0, "efficiency": 0, "quality": 0, "overall": 0}
@@ -238,11 +380,12 @@ class SelfReflection:
 
 
 # Singleton
-_reflection: Optional[SelfReflection] = None
+_reflector: Optional[SelfReflection] = None
 
 
-def get_self_reflection() -> SelfReflection:
-    global _reflection
-    if _reflection is None:
-        _reflection = SelfReflection()
-    return _reflection
+async def get_self_reflection() -> SelfReflection:
+    global _reflector
+    if _reflector is None:
+        _reflector = SelfReflection()
+        await _reflector.initialize()
+    return _reflector

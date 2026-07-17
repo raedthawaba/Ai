@@ -1,0 +1,15 @@
+{
+  "proposal_id": "prop_report_456_1784297547",
+  "source_report_id": "report_456",
+  "type": "unknown",
+  "description": "Unnecessary model change",
+  "proposed_change": {
+    "type": "model_change",
+    "details": "unnecessary change"
+  },
+  "status": "rejected",
+  "created_at": 1784297547.9905643,
+  "evaluated_at": null,
+  "evaluation_result": "Error: ",
+  "implemented_at": null
+}

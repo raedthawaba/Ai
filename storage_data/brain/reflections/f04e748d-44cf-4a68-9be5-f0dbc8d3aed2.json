@@ -1,0 +1,25 @@
+{
+  "report_id": "f04e748d-44cf-4a68-9be5-f0dbc8d3aed2",
+  "task_id": "task_002",
+  "goal_id": "goal_B",
+  "was_plan_good": true,
+  "better_path_exists": false,
+  "correct_model_used": false,
+  "cost_can_be_reduced": false,
+  "quality_can_increase": true,
+  "plan_score": 0.9,
+  "efficiency_score": 0.9,
+  "quality_score": 0.5,
+  "overall_score": 0.74,
+  "lessons_learned": [
+    "زمن الاستجابة 2500ms — اختر نموذجاً أسرع للمهام البسيطة",
+    "الجودة تحت 85% — فكّر في نموذج أقوى أو RAG"
+  ],
+  "recommendations": [
+    "حدّث Model Performance DB بهذه النتائج",
+    "أضف RAG لتعزيز السياق في المهام المشابهة"
+  ],
+  "model_used": "ollama/llama3",
+  "better_model_suggestion": "openai/gpt-4o (جودة أعلى للمهام الصعبة)",
+  "reflected_at": 1784296538.5798109
+}

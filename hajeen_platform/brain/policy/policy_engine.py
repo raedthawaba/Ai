@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import time
+import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -140,6 +141,31 @@ class LocalFirstRule(PolicyRule):
         return PolicyResult(rule_id=self.rule_id, decision=PolicyDecision.ALLOW, reason="الاختيار مناسب")
 
 
+@dataclass
+class DynamicPolicyRule(PolicyRule):
+    rules: Dict[str, Any] = field(default_factory=dict)
+    action: Dict[str, Any] = field(default_factory=dict)
+    is_active: bool = True
+    priority: int = 5  # 1=أعلى
+
+
+    def evaluate(self, ctx: Dict) -> PolicyResult:
+        # Simplified evaluation for demonstration
+        # In a real scenario, this would involve complex logic to evaluate the 'rules' against the 'context'
+        # and apply the 'action' if rules are met.
+        # For now, we'll just check if the model in context matches a rule.
+        model_in_context = ctx.get("model", "")
+        if "model" in self.rules and self.rules["model"] == model_in_context:
+            if self.action.get("type") == "reduce_max_tokens":
+                return PolicyResult(
+                    rule_id=self.rule_id,
+                    decision=PolicyDecision.MODIFY,
+                    reason=f"Applying dynamic policy: {self.name}",
+                    modifications={"max_tokens_factor": self.action["factor"]}
+                )
+        return PolicyResult(rule_id=self.rule_id, decision=PolicyDecision.ALLOW, reason="No dynamic policy match")
+
+
 class EthicsRule(PolicyRule):
     """أخلاقيات التنفيذ — لا تمييز، لا محتوى مضلّل."""
     UNETHICAL_PATTERNS = [
@@ -264,6 +290,19 @@ class PolicyEngine:
             final_decision, len(warnings), len(modifications)
         )
         return evaluation
+
+    async def add_policy(self, name: str, description: str, rules: Dict[str, Any], action: Dict[str, Any]) -> None:
+        rule_id = f"dynamic-{uuid.uuid4().hex[:8]}"
+        dynamic_rule = DynamicPolicyRule(
+            rule_id=rule_id,
+            category=PolicyCategory.MODEL_SELECTION, # Or a more appropriate category
+            name=name,
+            description=description,
+            rules=rules,
+            action=action
+        )
+        self._rules.append(dynamic_rule)
+        logger.info("policy_engine: added dynamic policy '%s'", name)
 
     def add_rule(self, rule: PolicyRule) -> None:
         self._rules.append(rule)

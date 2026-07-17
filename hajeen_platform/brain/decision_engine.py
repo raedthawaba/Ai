@@ -10,7 +10,9 @@ import logging
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
+from hajeen_platform.core.llm.llm_manager import LLMManager, get_llm_manager
+from hajeen_platform.core.llm.base import LLMResponse, LLMRequest
 
 from .goal_manager import Goal, IntentType, ComplexityLevel
 
@@ -113,7 +115,8 @@ class DecisionEngine:
         ComplexityLevel.ENTERPRISE: 100000,
     }
 
-    def __init__(self, performance_db=None, policy_engine=None) -> None:
+    def __init__(self, performance_db=None, policy_engine=None, llm_manager: Optional[LLMManager] = None) -> None:
+        self._llm_manager = llm_manager
         self._performance_db = performance_db
         self._policy_engine = policy_engine
         self._decisions: List[Decision] = []
@@ -243,6 +246,27 @@ class DecisionEngine:
     def get_recent_decisions(self, limit: int = 10) -> List[Dict]:
         return [d.to_dict() for d in self._decisions[-limit:]]
 
+    async def execute_llm_task(
+        self,
+        model_id: str,
+        prompt: str,
+        temperature: float = 0.7,
+        max_tokens: int = 500,
+        **kwargs
+    ) -> LLMResponse:
+        """ينفذ مهمة LLM باستخدام النموذج المحدد."""
+        logger.info("DecisionEngine: Executing LLM task with model=%s", model_id)
+        from hajeen_platform.core.llm.base import LLMMessage
+        messages = [LLMMessage(role="user", content=prompt)]
+        request = LLMRequest(
+            messages=messages,
+            model=model_id,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            **kwargs
+        )
+        return await self._llm_manager.complete(request)
+
     def get_stats(self) -> Dict[str, Any]:
         if not self._decisions:
             return {"total": 0}
@@ -262,8 +286,9 @@ class DecisionEngine:
 _engine: Optional[DecisionEngine] = None
 
 
-def get_decision_engine() -> DecisionEngine:
+async def get_decision_engine() -> DecisionEngine:
     global _engine
     if _engine is None:
-        _engine = DecisionEngine()
+        llm_manager = await get_llm_manager()
+        _engine = DecisionEngine(llm_manager=llm_manager)
     return _engine

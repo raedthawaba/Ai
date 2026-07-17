@@ -1,0 +1,28 @@
+{
+  "report_id": "2611a1bc-75ed-4521-85db-0062c6418faf",
+  "task_id": "task_003",
+  "goal_id": "goal_C",
+  "was_plan_good": false,
+  "better_path_exists": true,
+  "correct_model_used": false,
+  "cost_can_be_reduced": true,
+  "quality_can_increase": true,
+  "plan_score": 0.68,
+  "efficiency_score": 0.667,
+  "quality_score": 0.8,
+  "overall_score": 0.724,
+  "lessons_learned": [
+    "الخطة كانت غير مثالية — يجب تقليل عدد الخطوات",
+    "زمن الاستجابة 8000ms — اختر نموذجاً أسرع للمهام البسيطة",
+    "استخدام token_ratio=1.7x — قلّل max_tokens",
+    "الجودة تحت 85% — فكّر في نموذج أقوى أو RAG"
+  ],
+  "recommendations": [
+    "راجع Graph Planner لتحسين ترتيب الخطوات",
+    "حدّث Model Performance DB بهذه النتائج",
+    "أضف قاعدة في Policy Engine لتقليل التوكنز"
+  ],
+  "model_used": "openai/gpt-4o",
+  "better_model_suggestion": "ollama/llama3 (أسرع وأرخص للمهام البسيطة)",
+  "reflected_at": 1784296561.809428
+}

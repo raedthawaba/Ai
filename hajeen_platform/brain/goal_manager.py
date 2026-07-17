@@ -30,6 +30,7 @@ class IntentType(str, Enum):
     DATA = "data"                   # معالجة بيانات
     CONVERSATION = "conversation"   # محادثة عامة
     PLANNING = "planning"           # تخطيط
+    REASONING = "reasoning"         # استدلال / تقييم
 
 
 class ComplexityLevel(str, Enum):

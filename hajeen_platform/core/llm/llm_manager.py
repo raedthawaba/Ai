@@ -164,11 +164,12 @@ class LLMManager:
         }
 
 
-def get_llm_manager() -> LLMManager:
+async def get_llm_manager() -> LLMManager:
     """Singleton instance لـ LLMManager."""
     global _manager_instance
     if _manager_instance is None:
         _manager_instance = LLMManager()
+        await _manager_instance.initialize()
     return _manager_instance
 
 
