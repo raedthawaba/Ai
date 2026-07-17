@@ -68,6 +68,13 @@ class SelfEvolution:
         if self._decision_engine is None:
             self._decision_engine = await get_decision_engine()
 
+    async def analyze_and_propose_async(self, report: ReflectionReport) -> str:
+        """يرسل مهمة اقتراح التطور إلى Celery worker."""
+        from hajeen_platform.workers.async_tasks import evolution_proposal_task
+        logger.info(f"Dispatching evolution proposal generation for report {report.report_id} to Celery.")
+        celery_result = evolution_proposal_task.delay(report.to_dict())
+        return celery_result.id
+
     async def analyze_and_propose(self, report: ReflectionReport) -> Optional[EvolutionProposal]:
         """
         يحلل تقرير تقييم ذاتي ويقترح تعديلات بناءً على الدروس والتوصيات.
@@ -134,6 +141,13 @@ class SelfEvolution:
             logger.error("SelfEvolution: Error generating proposal: %s", e)
             hajeen_evolution_proposals_total.labels(type="unknown", status="error").inc()
             return None
+
+    async def evaluate_and_implement_async(self, proposal: EvolutionProposal) -> str:
+        """يرسل مهمة تقييم وتنفيذ الاقتراح إلى Celery worker."""
+        from hajeen_platform.workers.async_tasks import evolution_evaluation_task
+        logger.info(f"Dispatching evolution proposal evaluation for proposal {proposal.proposal_id} to Celery.")
+        celery_result = evolution_evaluation_task.delay(proposal.to_dict())
+        return celery_result.id
 
     async def evaluate_and_implement(self, proposal: EvolutionProposal) -> bool:
         """

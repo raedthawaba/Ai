@@ -110,6 +110,36 @@ class SelfReflection:
         if self._model_performance_db is None:
             self._model_performance_db = get_performance_db()
 
+    async def reflect_async(
+        self,
+        task_id: str,
+        goal_id: str,
+        model_used: str,
+        actual_latency_ms: float,
+        actual_tokens: int,
+        estimated_tokens: int,
+        response_quality: float,  # 0-1 من تقييم خارجي
+        plan_steps: int,
+        actual_steps: int,
+        context: Optional[Dict] = None,
+    ) -> str:
+        """يرسل مهمة التقييم الذاتي إلى Celery worker."""
+        from hajeen_platform.workers.async_tasks import reflection_task
+        logger.info(f"Dispatching self-reflection for task {task_id} to Celery.")
+        celery_result = reflection_task.delay(
+            task_id=task_id,
+            goal_id=goal_id,
+            model_used=model_used,
+            actual_latency_ms=actual_latency_ms,
+            actual_tokens=actual_tokens,
+            estimated_tokens=estimated_tokens,
+            response_quality=response_quality,
+            plan_steps=plan_steps,
+            actual_steps=actual_steps,
+            context=context
+        )
+        return celery_result.id
+
     async def reflect(
         self,
         task_id: str,

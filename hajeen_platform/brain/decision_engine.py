@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Union
 from hajeen_platform.core.llm.llm_manager import LLMManager, get_llm_manager
+from hajeen_platform.workers.async_tasks import llm_inference_task
 from hajeen_platform.core.llm.base import LLMResponse, LLMRequest
 
 from .goal_manager import Goal, IntentType, ComplexityLevel
@@ -245,6 +246,67 @@ class DecisionEngine:
 
     def get_recent_decisions(self, limit: int = 10) -> List[Dict]:
         return [d.to_dict() for d in self._decisions[-limit:]]
+
+    async def execute_decision(
+        self,
+        decision: Decision,
+        messages: List[Dict[str, str]],
+        context: Optional[Dict] = None,
+    ) -> Optional[LLMResponse]:
+        """ينفذ القرار المتخذ، ويرسل مهمة LLM إلى Celery إذا لزم الأمر."""
+        if decision.resource_type in [ResourceType.CLOUD_MODEL, ResourceType.LOCAL_MODEL]:
+            logger.info(f"DecisionEngine: Dispatching LLM inference for task {decision.task_id} to Celery.")
+
+            # Prepare goal data for serialization
+            goal_data = {
+                "goal_id": decision.task_id, # Using task_id as goal_id for simplicity here
+                "intent": "GENERAL", # Placeholder, ideally derived from original goal
+                "domain": decision.metadata.get("domain", "general"),
+                "complexity": decision.metadata.get("complexity", "MEDIUM"),
+                "original_request": messages[0]["content"] if messages else "",
+                "final_objective": decision.reasoning,
+                "sub_tasks": [],
+                "required_tools": [],
+                "suitable_models": [],
+                "confidence": decision.confidence
+            }
+
+            celery_result = llm_inference_task.delay(
+                decision.task_id,
+                goal_data,
+                {
+                    "model_id": decision.primary_model,
+                    "provider": "unknown", # Provider needs to be inferred or passed
+                    "messages": messages,
+                    "context": context
+                }
+            )
+
+            # For immediate response, we wait for the result. In a true async system,
+            # this would be handled by callbacks or polling.
+            try:
+                result = celery_result.get(timeout=300)  # Wait for up to 300 seconds
+
+                if result.get("status") == "success":
+                    # Reconstruct LLMResponse from the task result
+                    from hajeen_platform.core.llm.base import LLMResponse
+                    llm_response = LLMResponse(
+                        content=result["content"],
+                        model=result["model"],
+                        provider=result["provider"],
+                        latency_ms=result["latency_ms"],
+                        tokens_used=result["tokens_used"],
+                        cost_usd=result["cost_usd"]
+                    )
+                    return llm_response
+                else:
+                    logger.error(f"Celery LLM inference task failed for task {decision.task_id}: {result.get("error")}")
+                    return None
+            except Exception as e:
+                logger.error(f"Error getting result from Celery task for {decision.task_id}: {e}")
+                return None
+        # Add other resource types handling here (e.g., RAG, Web Search)
+        return None
 
     async def execute_llm_task(
         self,
