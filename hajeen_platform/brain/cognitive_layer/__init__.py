@@ -32,6 +32,54 @@ from .reasoning_engine import (
     get_reasoning_engine,
 )
 
+from .cognitive_compiler import (
+    CognitiveCompiler,
+    CognitiveEvent,
+    EventType,
+    FactExtractor,
+    ConceptExtractor,
+    RelationshipDiscoverer,
+    EvidenceValidator
+)
+
+from .cognitive_event_system import (
+    CognitiveEventSystem,
+    CognitiveEventStore
+)
+
+from .concept_engine import (
+    ConceptEngine,
+    Concept,
+    ConceptStore
+)
+
+from .cognitive_dna import (
+    CognitiveDNA,
+    CognitiveDNAManager,
+    CognitiveDNAStore
+)
+
+from .knowledge_physics_engine import (
+    KnowledgePhysicsEngine,
+    CausalLaw,
+    CausalLawStore,
+    CausalStrength
+)
+
+from .evidence_court import (
+    EvidenceCourt,
+    EvidenceItem,
+    ValidationReport,
+    SourceType,
+    EvidenceQuality
+)
+
+from .hypothesis_engine import (
+    HypothesisEngine,
+    Hypothesis,
+    HypothesisStatus
+)
+
 __all__ = [
     "IntentAnalyzer",
     "Intent",
@@ -44,4 +92,31 @@ __all__ = [
     "ReasoningResult",
     "ReasoningStrategy",
     "get_reasoning_engine",
+    "CognitiveCompiler",
+    "CognitiveEvent",
+    "EventType",
+    "FactExtractor",
+    "ConceptExtractor",
+    "RelationshipDiscoverer",
+    "EvidenceValidator",
+    "CognitiveEventSystem",
+    "CognitiveEventStore",
+    "ConceptEngine",
+    "Concept",
+    "ConceptStore",
+    "CognitiveDNA",
+    "CognitiveDNAManager",
+    "CognitiveDNAStore",
+    "KnowledgePhysicsEngine",
+    "CausalLaw",
+    "CausalLawStore",
+    "CausalStrength",
+    "EvidenceCourt",
+    "EvidenceItem",
+    "ValidationReport",
+    "SourceType",
+    "EvidenceQuality",
+    "HypothesisEngine",
+    "Hypothesis",
+    "HypothesisStatus"
 ]

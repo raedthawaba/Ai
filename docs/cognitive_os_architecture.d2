@@ -1,0 +1,121 @@
+direction: right
+
+CognitiveOperatingSystem: {
+  shape: class
+  label: "Hajeen Cognitive Operating System"
+
+  BrainV3: {
+    shape: class
+    label: "Brain V3 (Existing)"
+  }
+
+  CognitiveCompiler: {
+    shape: class
+    label: "1. Cognitive Compiler"
+  }
+
+  CognitiveEventSystem: {
+    shape: class
+    label: "2. Cognitive Event System"
+  }
+
+  ConceptEngine: {
+    shape: class
+    label: "3. Concept Engine"
+  }
+
+  CognitiveDNA: {
+    shape: class
+    label: "4. Cognitive DNA"
+  }
+
+  KnowledgePhysicsEngine: {
+    shape: class
+    label: "5. Knowledge Physics Engine"
+  }
+
+  EvidenceCourt: {
+    shape: class
+    label: "6. Evidence Court"
+  }
+
+  HypothesisEngine: {
+    shape: class
+    label: "7. Hypothesis Engine"
+  }
+
+  ModelSociety: {
+    shape: class
+    label: "8. Model Society"
+  }
+
+  ExperimentEngine: {
+    shape: class
+    label: "9. Experiment Engine"
+  }
+
+  ExperienceMemory: {
+    shape: class
+    label: "10. Experience Memory"
+  }
+
+  CuriosityEngine: {
+    shape: class
+    label: "11. Curiosity Engine"
+  }
+
+  WorldModel: {
+    shape: class
+    label: "12. World Model"
+  }
+
+  DreamEngine: {
+    shape: class
+    label: "13. Dream Engine"
+  }
+
+  MetaBrainLayer: {
+    shape: class
+    label: "14. Meta Brain Layer"
+  }
+
+  CognitiveEvolutionProtocol: {
+    shape: class
+    label: "15. Cognitive Evolution Protocol"
+  }
+
+  CognitiveConstitution: {
+    shape: class
+    label: "16. Cognitive Constitution"
+  }
+
+  CognitiveVersionControl: {
+    shape: class
+    label: "17. Cognitive Version Control"
+  }
+
+  RawInput -> CognitiveCompiler
+  CognitiveCompiler -> CognitiveEventSystem
+  CognitiveEventSystem -> ConceptEngine
+  ConceptEngine -> CognitiveDNA
+  CognitiveDNA -> KnowledgePhysicsEngine
+  KnowledgePhysicsEngine -> EvidenceCourt
+  EvidenceCourt -> HypothesisEngine
+  HypothesisEngine -> ModelSociety
+  ModelSociety -> ExperimentEngine
+  ExperimentEngine -> ExperienceMemory
+  ExperienceMemory -> CuriosityEngine
+  CuriosityEngine -> WorldModel
+  WorldModel -> DreamEngine
+  DreamEngine -> MetaBrainLayer
+  MetaBrainLayer -> CognitiveEvolutionProtocol
+  CognitiveEvolutionProtocol -> CognitiveConstitution
+  CognitiveConstitution -> CognitiveVersionControl
+
+  BrainV3 -> CognitiveCompiler: "Integrates with"
+  CognitiveCompiler -> BrainV3: "Updates"
+  ConceptEngine -> BrainV3: "Enhances Knowledge Graph"
+  ExperienceMemory -> BrainV3: "Extends Memory Fabric"
+  MetaBrainLayer -> BrainV3: "Monitors & Optimizes"
+  CognitiveEvolutionProtocol -> BrainV3: "Drives Evolution"
+}
