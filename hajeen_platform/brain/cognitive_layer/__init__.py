@@ -80,6 +80,77 @@ from .hypothesis_engine import (
     HypothesisStatus
 )
 
+from .model_society import (
+    ModelSociety,
+    ExpertModel,
+    ModelInteraction,
+    ExpertiseLevel
+)
+
+from .experiment_engine import (
+    ExperimentEngine,
+    Experiment,
+    ExperimentDesign,
+    ExperimentStatus,
+    ExperimentType
+)
+
+from .experience_memory import (
+    ExperienceMemory,
+    Experience,
+    LearnedLesson,
+    ExperienceType
+)
+
+from .curiosity_engine import (
+    CuriosityEngine,
+    KnowledgeGap,
+    CuriosityQuery,
+    GapType,
+    GapPriority
+)
+
+from .world_model import (
+    WorldModel,
+    WorldEntity,
+    WorldDynamics
+)
+
+from .dream_engine import (
+    DreamEngine,
+    Dream,
+    DreamType,
+    DreamStatus
+)
+
+from .meta_brain import (
+    MetaBrain,
+    CognitiveMetric,
+    SelfReflection
+)
+
+from .cognitive_evolution_protocol import (
+    CognitiveEvolutionProtocol,
+    EvolutionGoal,
+    EvolutionIteration,
+    EvolutionPhase,
+    ImprovementType
+)
+
+from .cognitive_constitution import (
+    CognitiveConstitution,
+    Principle,
+    GovernanceRule,
+    ConstitutionalViolation,
+    PrincipleCategory
+)
+
+from .cognitive_version_control import (
+    CognitiveVersionControl,
+    SystemVersion,
+    VersionCheckpoint
+)
+
 __all__ = [
     "IntentAnalyzer",
     "Intent",
@@ -118,5 +189,46 @@ __all__ = [
     "EvidenceQuality",
     "HypothesisEngine",
     "Hypothesis",
-    "HypothesisStatus"
+    "HypothesisStatus",
+    "ModelSociety",
+    "ExpertModel",
+    "ModelInteraction",
+    "ExpertiseLevel",
+    "ExperimentEngine",
+    "Experiment",
+    "ExperimentDesign",
+    "ExperimentStatus",
+    "ExperimentType",
+    "ExperienceMemory",
+    "Experience",
+    "LearnedLesson",
+    "ExperienceType",
+    "CuriosityEngine",
+    "KnowledgeGap",
+    "CuriosityQuery",
+    "GapType",
+    "GapPriority",
+    "WorldModel",
+    "WorldEntity",
+    "WorldDynamics",
+    "DreamEngine",
+    "Dream",
+    "DreamType",
+    "DreamStatus",
+    "MetaBrain",
+    "CognitiveMetric",
+    "SelfReflection",
+    "CognitiveEvolutionProtocol",
+    "EvolutionGoal",
+    "EvolutionIteration",
+    "EvolutionPhase",
+    "ImprovementType",
+    "CognitiveConstitution",
+    "Principle",
+    "GovernanceRule",
+    "ConstitutionalViolation",
+    "PrincipleCategory",
+    "CognitiveVersionControl",
+    "SystemVersion",
+    "VersionCheckpoint"
 ]
