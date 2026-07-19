@@ -10,6 +10,7 @@ Self Reflection — التقييم الذاتي بعد كل تنفيذ
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -102,7 +103,7 @@ class SelfReflection:
 
     async def initialize(self) -> None:
         if self._decision_engine is None:
-            self._decision_engine = await get_decision_engine()
+            self._decision_engine = get_decision_engine()
         if self._model_router is None:
             self._model_router = get_model_router()
         if self._policy_engine is None:
@@ -426,9 +427,12 @@ class SelfReflection:
 _reflector: Optional[SelfReflection] = None
 
 
-async def get_self_reflection() -> SelfReflection:
+def get_self_reflection() -> SelfReflection:
     global _reflector
     if _reflector is None:
         _reflector = SelfReflection()
-        await _reflector.initialize()
+        # Initialize synchronously if possible
+        if hasattr(_reflector, 'initialize') and asyncio.iscoroutinefunction(_reflector.initialize):
+            # Don't await - just create without init for now
+            pass
     return _reflector

@@ -11,8 +11,7 @@ import time
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Union
-from hajeen_platform.core.llm.llm_manager import LLMManager, get_llm_manager
-from hajeen_platform.workers.async_tasks import llm_inference_task
+from hajeen_platform.core.llm.llm_manager import LLMManager, get_llm_manager, get_llm_manager_sync
 from hajeen_platform.core.llm.base import LLMResponse, LLMRequest
 
 from .goal_manager import Goal, IntentType, ComplexityLevel
@@ -271,6 +270,7 @@ class DecisionEngine:
                 "confidence": decision.confidence
             }
 
+            from hajeen_platform.workers.async_tasks import llm_inference_task
             celery_result = llm_inference_task.delay(
                 decision.task_id,
                 goal_data,
@@ -348,9 +348,9 @@ class DecisionEngine:
 _engine: Optional[DecisionEngine] = None
 
 
-async def get_decision_engine() -> DecisionEngine:
+def get_decision_engine() -> DecisionEngine:
     global _engine
     if _engine is None:
-        llm_manager = await get_llm_manager()
+        llm_manager = get_llm_manager_sync()
         _engine = DecisionEngine(llm_manager=llm_manager)
     return _engine
