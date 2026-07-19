@@ -14,7 +14,7 @@ from pydantic import BaseModel, EmailStr, Field
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-JWT_SECRET = os.getenv("JWT_SECRET", "hajeen-change-me-in-production-secret-key")
+JWT_SECRET = os.getenv("JWT_SECRET", "hajeen-jwt-secret-change-in-production")
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────

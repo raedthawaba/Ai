@@ -13,7 +13,7 @@ from hajeen_platform.security.auth.revoked_tokens import get_revoked_token_store
 
 logger = logging.getLogger(__name__)
 
-JWT_SECRET = os.environ["JWT_SECRET"]
+JWT_SECRET = os.environ.get("JWT_SECRET", "hajeen-jwt-secret-change-in-production")
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_TTL = 3600
 REFRESH_TOKEN_TTL = 86400 * 30

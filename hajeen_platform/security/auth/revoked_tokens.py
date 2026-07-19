@@ -25,8 +25,6 @@ class RevokedTokenStore:
         current_time = time.time()
         self._revoked_tokens = {jti: exp for jti, exp in self._revoked_tokens.items() if exp > current_time}
 
-        }
-
 # Singleton instance
 _revoked_store: RevokedTokenStore | None = None
 
