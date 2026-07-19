@@ -8,7 +8,7 @@ import uuid
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from core.llm.base import LLMMessage, LLMRequest, LLMResponse
-from core.llm.llm_manager import LLMManager, get_llm_manager
+from core.llm.llm_manager import LLMManager, get_llm_manager, get_llm_manager_sync
 from .queue_manager import QueueManager
 from .request_handler import InferenceJob, JobStatus, RequestHandler
 from .response_handler import ProcessedResponse, ResponseHandler
@@ -56,7 +56,7 @@ class InferenceEngine:
     @property
     def llm_manager(self) -> LLMManager:
         if self._llm_manager is None:
-            self._llm_manager = get_llm_manager()
+            self._llm_manager = get_llm_manager_sync()
         return self._llm_manager
 
     async def initialize(self) -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Dict, Optional, Type
 
-from core.embeddings.base import BaseEmbeddingModel, EmbeddingConfig
+from .base import BaseEmbeddingModel, EmbeddingConfig
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ class EmbeddingRegistry:
 # ─── تسجيل النماذج الافتراضية ───────────────────────────────────────────────
 def _register_defaults() -> None:
     try:
-        from core.embeddings.sentence_transformer import SentenceTransformerModel
+        from .sentence_transformer import SentenceTransformerModel
         register_embedding_model("sentence-transformers", SentenceTransformerModel)
         register_embedding_model("all-MiniLM-L6-v2", SentenceTransformerModel)
     except ImportError:
