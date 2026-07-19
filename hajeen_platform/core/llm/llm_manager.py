@@ -206,6 +206,11 @@ async def get_llm_manager() -> LLMManager:
     return _manager_instance
 
 
+def get_llm_manager_sync() -> Optional[LLMManager]:
+    """Get existing LLMManager instance without initialization (sync version)."""
+    return _manager_instance
+
+
 def set_llm_manager(manager: LLMManager) -> None:
     """تعيين instance مخصص (للاختبار)."""
     global _manager_instance

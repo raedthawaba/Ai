@@ -123,9 +123,10 @@ class BaseLLMProvider(ABC):
     def __init__(self, config: LLMConfig):
         self.config = config
         self._initialized = False
+        from datetime import timedelta
         self._circuit_breaker = CircuitBreaker(
             fail_max=self.config.circuit_breaker_fail_max,
-            reset_timeout=self.config.circuit_breaker_reset_timeout,
+            timeout_duration=timedelta(seconds=self.config.circuit_breaker_reset_timeout),
             exclude=[LLMError] # Exclude our custom LLMError from tripping the breaker immediately
         )
 
