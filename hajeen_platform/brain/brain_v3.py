@@ -25,10 +25,10 @@ from enum import Enum
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 from .goal_manager import GoalManager, Goal, get_goal_manager
-from .task_decomposer import TaskDecomposer, DecompositionPlan, get_task_decomposer
-from .graph_planner import GraphPlanner, ExecutionGraph, get_graph_planner
-from .decision_engine import DecisionEngine, Decision, get_decision_engine
-from .model_router import ModelRouter, RouteResult, get_model_router
+from .task_decomposer_v3 import TaskDecomposerV3 as TaskDecomposer, DecompositionResult as DecompositionPlan, get_task_decomposer_v3
+from .graph_planner_v3 import GraphPlannerV3 as GraphPlanner, ExecutionPlan as ExecutionGraph, get_graph_planner_v3
+from .decision_engine_v3 import DecisionEngineV3 as DecisionEngine, DecisionReasoning as Decision, get_decision_engine_v3
+from .model_router_v3 import ModelRouterV3 as ModelRouter, RoutingResult as RouteResult, get_model_router_v3
 from .multi_model import MultiModelCollaborator, CollaborationStrategy, get_multi_model_collaborator
 from .state_machine import StateMachine, TaskState, get_state_machine
 from .memory.memory_fabric import MemoryFabric, get_memory_fabric
@@ -193,12 +193,12 @@ class HajeenBrainV3:
     def __init__(self) -> None:
         logger.info("HajeenBrain v%s: تهيئة العقل المدبّر المركزي...", self.VERSION)
         
-        # تهيئة جميع المكوّنات
+        # تهيئة جميع المكوّنات (v3 versions)
         self.goal_manager: GoalManager = get_goal_manager()
-        self.task_decomposer: TaskDecomposer = get_task_decomposer()
-        self.graph_planner: GraphPlanner = get_graph_planner()
-        self.decision_engine: DecisionEngine = get_decision_engine()
-        self.model_router: ModelRouter = get_model_router()
+        self.task_decomposer: TaskDecomposer = get_task_decomposer_v3()
+        self.graph_planner: GraphPlanner = get_graph_planner_v3()
+        self.decision_engine: DecisionEngine = get_decision_engine_v3()
+        self.model_router: ModelRouter = get_model_router_v3()
         self.state_machine: StateMachine = get_state_machine()
         self.memory: MemoryFabric = get_memory_fabric()
         self.knowledge_graph: KnowledgeGraph = get_knowledge_graph()
