@@ -45,7 +45,33 @@ async def get_brain_v3():
 from .brain import BrainRequest, BrainResponse
 from .brain_v3 import RequestType, ExecutionTrace
 
+# Re-export Knowledge modules
+from .knowledge import (
+    KnowledgeGraph, KGNode, KGEdge, NodeCategory, 
+    RelationType, get_knowledge_graph
+)
+
+# Re-export Memory modules
+from .memory import (
+    MemoryFabric, MemoryEntry, SessionMemory, ConversationMemory,
+    LongTermMemory, SemanticMemory, EpisodicMemory, ProceduralMemory,
+    AgentMemory, get_memory_fabric
+)
+
+# Re-export Goal Manager
+from .goal_manager import Goal, IntentType, ComplexityLevel
+
+# Re-export Decision Engine
+from .decision_engine import DecisionEngine, get_decision_engine
+
+# Re-export Model Router
+from .model_router import ModelRouter, get_model_router
+
+# Re-export Self Reflection
+from .reflection.self_reflection import SelfReflection, get_self_reflection
+
 __all__ = [
+    # Core
     "HajeenBrain",
     "BrainRequest",
     "BrainResponse",
@@ -54,4 +80,41 @@ __all__ = [
     "RequestType",
     "ExecutionTrace",
     "get_brain_v3",
+    
+    # Knowledge
+    "KnowledgeGraph",
+    "KGNode", 
+    "KGEdge",
+    "NodeCategory",
+    "RelationType",
+    "get_knowledge_graph",
+    
+    # Memory
+    "MemoryFabric",
+    "MemoryEntry",
+    "SessionMemory",
+    "ConversationMemory",
+    "LongTermMemory",
+    "SemanticMemory",
+    "EpisodicMemory",
+    "ProceduralMemory",
+    "AgentMemory",
+    "get_memory_fabric",
+    
+    # Goal Management
+    "Goal",
+    "IntentType",
+    "ComplexityLevel",
+    
+    # Decision
+    "DecisionEngine",
+    "get_decision_engine",
+    
+    # Routing
+    "ModelRouter",
+    "get_model_router",
+    
+    # Reflection
+    "SelfReflection",
+    "get_self_reflection",
 ]
