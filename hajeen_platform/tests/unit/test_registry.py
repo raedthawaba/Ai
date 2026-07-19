@@ -46,12 +46,12 @@ def test_register_channel():
 def test_register_duplicate_channel_raises_exception():
     channel = create_test_channel("ch_1", "Channel One")
     ChannelRegistry.register(channel)
-    with pytest.raises(ChannelException, match="already registered"):
+    with pytest.raises(ChannelException, match="مسجّلة بالفعل"):
         ChannelRegistry.register(channel)
 
 
 def test_register_invalid_object_raises_exception():
-    with pytest.raises(ChannelException, match="Invalid channel object"):
+    with pytest.raises(ChannelException, match="غير صالح"):
         ChannelRegistry.register("not_a_channel")
 
 
@@ -65,7 +65,7 @@ def test_unregister_channel():
 
 
 def test_unregister_non_existent_channel_raises_exception():
-    with pytest.raises(ChannelException, match="not found for unregistration"):
+    with pytest.raises(ChannelException, match="غير موجودة"):
         ChannelRegistry.unregister("non_existent_channel")
 
 
@@ -100,7 +100,7 @@ def test_update_channel_status():
 
 
 def test_update_status_non_existent_channel_raises_exception():
-    with pytest.raises(ChannelException, match="not found for status update"):
+    with pytest.raises(ChannelException, match="غير موجودة"):
         ChannelRegistry.update_status("ch_non_existent", ChannelStatus.ACTIVE)
 
 

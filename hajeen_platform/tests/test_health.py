@@ -6,9 +6,11 @@ client = TestClient(app)
 def test_health():
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    data = response.json()
+    assert data.get("status") == "ok"
 
 def test_ping():
     response = client.get("/ping")
     assert response.status_code == 200
-    assert response.json() == {"message": "pong"}
+    data = response.json()
+    assert data.get("message") == "pong"

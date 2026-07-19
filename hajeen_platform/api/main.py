@@ -371,7 +371,7 @@ async def on_startup():
             logger.info("startup: Mistral Fine-tuned provider مسجّل ✓")
         except Exception:
             pass
-        manager = get_llm_manager()
+        manager = await get_llm_manager()
         await manager.initialize()
         logger.info("startup: LLM Manager جاهز ✓ (provider=%s)", manager.settings.provider)
     except Exception as exc:

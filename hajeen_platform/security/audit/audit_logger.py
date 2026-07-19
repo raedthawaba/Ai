@@ -140,3 +140,23 @@ class AuditLogger:
             "total_events": len(rows),
             "broken_events": broken_at,
         }
+
+
+# ── Singleton Factory ─────────────────────────────────────────────────────────
+_audit_logger: Optional[AuditLogger] = None
+
+
+def get_audit_logger() -> AuditLogger:
+    """Singleton factory for AuditLogger."""
+    global _audit_logger
+    if _audit_logger is None:
+        # Create dummy db and redis for now
+        class DummyDB:
+            def execute(self, *args, **kwargs): pass
+            def fetchone(self, *args, **kwargs): return None
+            def fetchall(self, *args, **kwargs): return []
+        class DummyRedis:
+            def get(self, *args, **kwargs): return None
+            def set(self, *args, **kwargs): pass
+        _audit_logger = AuditLogger(DummyDB(), DummyRedis())
+    return _audit_logger

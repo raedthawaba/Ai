@@ -3,7 +3,7 @@ import secrets
 import hashlib
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from hajeen_platform.security.rbac.rbac import Permission, Role
 
