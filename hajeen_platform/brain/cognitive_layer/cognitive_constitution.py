@@ -17,42 +17,42 @@ logger = logging.getLogger(__name__)
 
 
 class PrincipleCategory(Enum):
-    \"\"\"Enumeration of principle categories.\"\"\"
-    ETHICS = \"ethics\"
-    TRANSPARENCY = \"transparency\"
-    ACCOUNTABILITY = \"accountability\"
-    SAFETY = \"safety\"
-    FAIRNESS = \"fairness\"
-    PRIVACY = \"privacy\"
+    """Enumeration of principle categories."""
+    ETHICS = "ethics"
+    TRANSPARENCY = "transparency"
+    ACCOUNTABILITY = "accountability"
+    SAFETY = "safety"
+    FAIRNESS = "fairness"
+    PRIVACY = "privacy"
 
 
 @dataclass
 class Principle:
-    \"\"\"
+    """
     Represents a principle in the cognitive constitution.
-    \"\"\"
+    """
     principle_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     category: str = PrincipleCategory.ETHICS.value
     
     # Principle Details
-    title: str = \"\"
-    description: str = \"\"
-    rationale: str = \"\"
+    title: str = ""
+    description: str = ""
+    rationale: str = ""
     
     # Guidelines
     guidelines: List[str] = field(default_factory=list)
     constraints: List[str] = field(default_factory=list)
     
     # Enforcement
-    enforcement_level: str = \"strict\"  # strict, moderate, advisory
-    violation_consequence: str = \"\"
+    enforcement_level: str = "strict"  # strict, moderate, advisory
+    violation_consequence: str = ""
     
     # Timeline
     created_at: datetime = field(default_factory=datetime.utcnow)
     last_reviewed: datetime = field(default_factory=datetime.utcnow)
     
     def to_dict(self) -> Dict[str, Any]:
-        \"\"\"Convert to dictionary representation.\"\"\"
+        """Convert to dictionary representation."""
         data = asdict(self)
         data['created_at'] = self.created_at.isoformat()
         data['last_reviewed'] = self.last_reviewed.isoformat()
@@ -61,14 +61,14 @@ class Principle:
 
 @dataclass
 class GovernanceRule:
-    \"\"\"
+    """
     Represents a governance rule.
-    \"\"\"
+    """
     rule_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     
     # Rule Details
-    title: str = \"\"
-    description: str = \"\"
+    title: str = ""
+    description: str = ""
     
     # Scope
     applicable_domains: List[str] = field(default_factory=list)
@@ -87,7 +87,7 @@ class GovernanceRule:
     effective_date: datetime = field(default_factory=datetime.utcnow)
     
     def to_dict(self) -> Dict[str, Any]:
-        \"\"\"Convert to dictionary representation.\"\"\"
+        """Convert to dictionary representation."""
         data = asdict(self)
         data['created_at'] = self.created_at.isoformat()
         data['effective_date'] = self.effective_date.isoformat()
@@ -96,9 +96,9 @@ class GovernanceRule:
 
 @dataclass
 class ConstitutionalViolation:
-    \"\"\"
+    """
     Records a violation of the constitution.
-    \"\"\"
+    """
     violation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     
     # Violation Details
@@ -106,19 +106,19 @@ class ConstitutionalViolation:
     rule_id: Optional[str] = None
     
     # Context
-    description: str = \"\"
+    description: str = ""
     severity: float = 0.5  # 0.0 to 1.0
     
     # Action
-    action_taken: str = \"\"
-    resolution: str = \"\"
+    action_taken: str = ""
+    resolution: str = ""
     
     # Timeline
     detected_at: datetime = field(default_factory=datetime.utcnow)
     resolved_at: Optional[datetime] = None
     
     def to_dict(self) -> Dict[str, Any]:
-        \"\"\"Convert to dictionary representation.\"\"\"
+        """Convert to dictionary representation."""
         data = asdict(self)
         data['detected_at'] = self.detected_at.isoformat()
         if data['resolved_at']:
@@ -127,15 +127,15 @@ class ConstitutionalViolation:
 
 
 class CognitiveConstitution:
-    \"\"\"
+    """
     Defines ethical principles and governance rules for the cognitive system.
     
     The Cognitive Constitution ensures that the system operates within ethical
     boundaries and maintains accountability for its actions.
-    \"\"\"
+    """
     
     def __init__(self):
-        \"\"\"Initialize the Cognitive Constitution.\"\"\"
+        """Initialize the Cognitive Constitution."""
         self.principles: Dict[str, Principle] = {}
         self.principles_by_category: Dict[str, List[str]] = {}  # category -> [principle_ids]
         self.governance_rules: Dict[str, GovernanceRule] = {}
@@ -146,7 +146,7 @@ class CognitiveConstitution:
         self._initialize_default_principles()
     
     def _initialize_default_principles(self) -> None:
-        \"\"\"Initialize default constitutional principles.\"\"\"
+        """Initialize default constitutional principles."""
         default_principles = [
             {
                 'category': PrincipleCategory.ETHICS.value,
@@ -210,7 +210,7 @@ class CognitiveConstitution:
     
     def add_principle(self, category: str, title: str, description: str,
                      guidelines: Optional[List[str]] = None) -> Principle:
-        \"\"\"
+        """
         Add a principle to the constitution.
         
         Args:
@@ -221,7 +221,7 @@ class CognitiveConstitution:
             
         Returns:
             The added Principle
-        \"\"\"
+        """
         principle = Principle(
             category=category,
             title=title,
@@ -236,11 +236,11 @@ class CognitiveConstitution:
             self.principles_by_category[category] = []
         self.principles_by_category[category].append(principle.principle_id)
         
-        self.logger.info(f\"Added principle: {title}\")
+        self.logger.info(f"Added principle: {title}")
         return principle
     
     def get_principle(self, principle_id: str) -> Optional[Principle]:
-        \"\"\"
+        """
         Retrieve a principle by ID.
         
         Args:
@@ -248,11 +248,11 @@ class CognitiveConstitution:
             
         Returns:
             The Principle, or None if not found
-        \"\"\"
+        """
         return self.principles.get(principle_id)
     
     def get_principles_by_category(self, category: str) -> List[Principle]:
-        \"\"\"
+        """
         Get all principles in a category.
         
         Args:
@@ -260,13 +260,13 @@ class CognitiveConstitution:
             
         Returns:
             List of Principle objects
-        \"\"\"
+        """
         principle_ids = self.principles_by_category.get(category, [])
         return [self.principles[pid] for pid in principle_ids if pid in self.principles]
     
     def add_governance_rule(self, title: str, description: str,
                            requirements: Optional[List[str]] = None) -> GovernanceRule:
-        \"\"\"
+        """
         Add a governance rule.
         
         Args:
@@ -276,7 +276,7 @@ class CognitiveConstitution:
             
         Returns:
             The added GovernanceRule
-        \"\"\"
+        """
         rule = GovernanceRule(
             title=title,
             description=description,
@@ -285,11 +285,11 @@ class CognitiveConstitution:
         
         self.governance_rules[rule.rule_id] = rule
         
-        self.logger.info(f\"Added governance rule: {title}\")
+        self.logger.info(f"Added governance rule: {title}")
         return rule
     
     def get_governance_rule(self, rule_id: str) -> Optional[GovernanceRule]:
-        \"\"\"
+        """
         Retrieve a governance rule by ID.
         
         Args:
@@ -297,11 +297,11 @@ class CognitiveConstitution:
             
         Returns:
             The GovernanceRule, or None if not found
-        \"\"\"
+        """
         return self.governance_rules.get(rule_id)
     
     def check_action_compliance(self, action: str, context: Dict[str, Any]) -> Dict[str, Any]:
-        \"\"\"
+        """
         Check if an action complies with the constitution.
         
         Args:
@@ -310,7 +310,7 @@ class CognitiveConstitution:
             
         Returns:
             Compliance check result
-        \"\"\"
+        """
         result = {
             'action': action,
             'compliant': True,
@@ -323,31 +323,31 @@ class CognitiveConstitution:
         for principle in self.principles.values():
             if self._violates_principle(action, principle, context):
                 result['compliant'] = False
-                result['violations'].append(f\"Violates principle: {principle.title}\")
+                result['violations'].append(f"Violates principle: {principle.title}")
         
         # Check against governance rules
         for rule in self.governance_rules.values():
             if self._violates_rule(action, rule, context):
                 result['compliant'] = False
-                result['violations'].append(f\"Violates rule: {rule.title}\")
+                result['violations'].append(f"Violates rule: {rule.title}")
         
         return result
     
     def _violates_principle(self, action: str, principle: Principle, context: Dict[str, Any]) -> bool:
-        \"\"\"Check if an action violates a principle.\"\"\"
+        """Check if an action violates a principle."""
         # Simulate principle checking
         return False
     
     def _violates_rule(self, action: str, rule: GovernanceRule, context: Dict[str, Any]) -> bool:
-        \"\"\"Check if an action violates a rule.\"\"\"
+        """Check if an action violates a rule."""
         # Simulate rule checking
         return False
     
     def record_violation(self, principle_id: Optional[str] = None,
                         rule_id: Optional[str] = None,
-                        description: str = \"\",
+                        description: str = "",
                         severity: float = 0.5) -> ConstitutionalViolation:
-        \"\"\"
+        """
         Record a constitutional violation.
         
         Args:
@@ -358,7 +358,7 @@ class CognitiveConstitution:
             
         Returns:
             The recorded ConstitutionalViolation
-        \"\"\"
+        """
         violation = ConstitutionalViolation(
             principle_id=principle_id,
             rule_id=rule_id,
@@ -368,11 +368,11 @@ class CognitiveConstitution:
         
         self.violations[violation.violation_id] = violation
         
-        self.logger.warning(f\"Recorded constitutional violation: {description}\")
+        self.logger.warning(f"Recorded constitutional violation: {description}")
         return violation
     
     def resolve_violation(self, violation_id: str, resolution: str) -> bool:
-        \"\"\"
+        """
         Resolve a constitutional violation.
         
         Args:
@@ -381,7 +381,7 @@ class CognitiveConstitution:
             
         Returns:
             True if successful, False otherwise
-        \"\"\"
+        """
         violation = self.violations.get(violation_id)
         if not violation:
             return False
@@ -389,16 +389,16 @@ class CognitiveConstitution:
         violation.resolution = resolution
         violation.resolved_at = datetime.utcnow()
         
-        self.logger.info(f\"Resolved constitutional violation: {violation_id}\")
+        self.logger.info(f"Resolved constitutional violation: {violation_id}")
         return True
     
     def get_constitution_statistics(self) -> Dict[str, Any]:
-        \"\"\"
+        """
         Get statistics about the constitution.
         
         Returns:
             Dictionary containing constitution statistics
-        \"\"\"
+        """
         stats = {
             'total_principles': len(self.principles),
             'principles_by_category': {},
@@ -424,12 +424,12 @@ class CognitiveConstitution:
         return stats
     
     def export_constitution(self) -> str:
-        \"\"\"
+        """
         Export the constitution as JSON.
         
         Returns:
             JSON string containing the constitution
-        \"\"\"
+        """
         data = {
             'principles': [p.to_dict() for p in self.principles.values()],
             'governance_rules': [r.to_dict() for r in self.governance_rules.values()],

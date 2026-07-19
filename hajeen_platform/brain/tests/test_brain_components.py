@@ -157,7 +157,7 @@ class TestStateMachine:
 class TestMemoryFabric:
     def setup_method(self):
         from brain.memory.memory_fabric import MemoryFabric
-        self.fabric = MemoryFabric(storage_path="/tmp/test_memory")
+        self.fabric = MemoryFabric(storage_base="/tmp/test_memory")
 
     def test_session_memory(self):
         session = self.fabric.get_session("test-session")
