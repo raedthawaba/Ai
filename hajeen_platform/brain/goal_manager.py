@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
-from hajeen_platform.brain.llm_analyzer import analyze_with_llm, LLMAnalysisResult
+from .llm_analyzer import analyze_with_llm, LLMAnalysisResult
 
 logger = logging.getLogger(__name__)
 
