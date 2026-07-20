@@ -1,0 +1,164 @@
+{
+  "timestamp": "2026-07-20T23:08:01.785614",
+  "summary": {
+    "total": 11,
+    "passed": 8,
+    "failed": 3,
+    "success_rate": 72.72727272727273
+  },
+  "test_results": [
+    {
+      "name": "E2E Flow - Full Request Pipeline",
+      "status": "FAIL",
+      "duration_ms": 745.7015514373779,
+      "details": {},
+      "error": "BrainRequest.__init__() got an unexpected keyword argument 'conversation_history'"
+    },
+    {
+      "name": "Strategy: chain_of_thought",
+      "status": "PASS",
+      "duration_ms": 2006.1671733856201,
+      "details": {
+        "strategy": "chain_of_thought",
+        "steps_count": 0,
+        "confidence": 0.3
+      },
+      "error": ""
+    },
+    {
+      "name": "Strategy: first_principles",
+      "status": "PASS",
+      "duration_ms": 2005.9762001037598,
+      "details": {
+        "strategy": "first_principles",
+        "steps_count": 0,
+        "confidence": 0.3
+      },
+      "error": ""
+    },
+    {
+      "name": "Strategy: multi_perspective",
+      "status": "PASS",
+      "duration_ms": 2005.711317062378,
+      "details": {
+        "strategy": "multi_perspective",
+        "steps_count": 0,
+        "confidence": 0.3
+      },
+      "error": ""
+    },
+    {
+      "name": "Strategy: analogy",
+      "status": "PASS",
+      "duration_ms": 2004.3659210205078,
+      "details": {
+        "strategy": "analogy",
+        "steps_count": 0,
+        "confidence": 0.3
+      },
+      "error": ""
+    },
+    {
+      "name": "Strategy: tree_of_thought",
+      "status": "PASS",
+      "duration_ms": 2004.8761367797852,
+      "details": {
+        "strategy": "tree_of_thought",
+        "steps_count": 0,
+        "confidence": 0.3
+      },
+      "error": ""
+    },
+    {
+      "name": "Strategy: decomposition",
+      "status": "PASS",
+      "duration_ms": 2005.7644844055176,
+      "details": {
+        "strategy": "decomposition",
+        "steps_count": 0,
+        "confidence": 0.3
+      },
+      "error": ""
+    },
+    {
+      "name": "Error Recovery - LLM Failure",
+      "status": "PASS",
+      "duration_ms": 2003.7710666656494,
+      "details": {
+        "fallback_used": true
+      },
+      "error": ""
+    },
+    {
+      "name": "Error Recovery - Cache",
+      "status": "FAIL",
+      "duration_ms": 4011.4269256591797,
+      "details": {
+        "cache_working": false,
+        "llm_calls": 6
+      },
+      "error": ""
+    },
+    {
+      "name": "Architecture - Memory Leak",
+      "status": "FAIL",
+      "duration_ms": 201029.07752990723,
+      "details": {
+        "initial_objects": 151665,
+        "final_objects": 152705,
+        "growth": 1040
+      },
+      "error": ""
+    },
+    {
+      "name": "Architecture - Circular Dependency",
+      "status": "PASS",
+      "duration_ms": 0.008821487426757812,
+      "details": {
+        "modules_loaded": 5
+      },
+      "error": ""
+    }
+  ],
+  "stress_test_results": [
+    {
+      "concurrent": 100,
+      "total": 100,
+      "successful": 100,
+      "failed": 0,
+      "avg_latency_ms": 2008.482723236084,
+      "p50": 2008.7611675262451,
+      "p95": 2010.5266571044922,
+      "p99": 2047.7852821350098,
+      "throughput_rps": 46.79321264222142,
+      "memory_mb": 22.4296875,
+      "error_rate": 0.0
+    },
+    {
+      "concurrent": 500,
+      "total": 500,
+      "successful": 500,
+      "failed": 0,
+      "avg_latency_ms": 2115.4893231391907,
+      "p50": 2117.9556846618652,
+      "p95": 2228.3124923706055,
+      "p99": 2232.866048812866,
+      "throughput_rps": 177.1433552658698,
+      "memory_mb": 74.36328125,
+      "error_rate": 0.0
+    },
+    {
+      "concurrent": 1000,
+      "total": 1000,
+      "successful": 1000,
+      "failed": 0,
+      "avg_latency_ms": 2878.485897541046,
+      "p50": 2875.0460147857666,
+      "p95": 3102.762222290039,
+      "p99": 3111.7310523986816,
+      "throughput_rps": 242.94664463971057,
+      "memory_mb": 65.59765625,
+      "error_rate": 0.0
+    }
+  ]
+}
