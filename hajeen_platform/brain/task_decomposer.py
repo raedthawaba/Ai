@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from .goal_manager import Goal, IntentType, ComplexityLevel
+from .goal_manager import ComplexityLevel, Goal, IntentType
 
 logger = logging.getLogger(__name__)
 

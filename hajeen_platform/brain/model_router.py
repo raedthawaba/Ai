@@ -10,7 +10,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -238,6 +238,7 @@ class ModelRouter:
     async def _call_openai(self, cfg: ModelConfig, messages: List[Dict]) -> str:
         try:
             import os
+
             import httpx
             api_key = os.getenv("OPENAI_API_KEY", "")
             if not api_key:

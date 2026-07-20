@@ -22,16 +22,15 @@ Multi-Agent System v3 — نظام الوكلاء المتعددين
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
+from hajeen_platform.brain.task_decomposer_v3 import Task, TaskPriority
 from hajeen_platform.core.llm import LLMManager
-from hajeen_platform.brain.task_decomposer_v3 import Task, TaskStatus, TaskPriority
 
 logger = logging.getLogger(__name__)
 

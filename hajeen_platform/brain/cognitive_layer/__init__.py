@@ -12,152 +12,100 @@ Cognitive Layer — طبقة الإدراك المتقدمة
 جميع المكونات تستخدم الاستدلال العميق وليس مطابقة الكلمات المفتاحية.
 """
 
-from .intent_analyzer import (
-    IntentAnalyzer,
-    Intent,
-    IntentCategory,
-    get_intent_analyzer,
-)
-
-from .context_analyzer import (
-    ContextAnalyzer,
-    ContextAnalysis,
-    get_context_analyzer,
-)
-
-from .reasoning_engine import (
-    ReasoningEngine,
-    ReasoningResult,
-    ReasoningStep,
-    RiskAssessment,
-    SolutionOption,
-    ReasoningStrategy,
-    ReasoningEngineError,
-    LLMCallError,
-    ValidationError,
-    get_reasoning_engine,
-    reset_reasoning_engine,
-    create_reasoning_engine,
-)
-
 from .cognitive_compiler import (
     CognitiveCompiler,
     CognitiveEvent,
-    EventType,
-    FactExtractor,
     ConceptExtractor,
+    EventType,
+    EvidenceValidator,
+    FactExtractor,
     RelationshipDiscoverer,
-    EvidenceValidator
 )
-
-from .cognitive_event_system import (
-    CognitiveEventSystem,
-    CognitiveEventStore
+from .cognitive_constitution import (
+    CognitiveConstitution,
+    ConstitutionalViolation,
+    GovernanceRule,
+    Principle,
+    PrincipleCategory,
 )
-
-from .concept_engine import (
-    ConceptEngine,
-    Concept,
-    ConceptStore
-)
-
-from .cognitive_dna import (
-    CognitiveDNA,
-    CognitiveDNAManager,
-    CognitiveDNAStore
-)
-
-from .knowledge_physics_engine import (
-    KnowledgePhysicsEngine,
-    CausalLaw,
-    CausalLawStore,
-    CausalStrength
-)
-
-from .evidence_court import (
-    EvidenceCourt,
-    EvidenceItem,
-    ValidationReport,
-    SourceType,
-    EvidenceQuality
-)
-
-from .hypothesis_engine import (
-    HypothesisEngine,
-    Hypothesis,
-    HypothesisStatus
-)
-
-from .model_society import (
-    ModelSociety,
-    ExpertModel,
-    ModelInteraction,
-    ExpertiseLevel
-)
-
-from .experiment_engine import (
-    ExperimentEngine,
-    Experiment,
-    ExperimentDesign,
-    ExperimentStatus,
-    ExperimentType
-)
-
-from .experience_memory import (
-    ExperienceMemory,
-    Experience,
-    LearnedLesson,
-    ExperienceType
-)
-
-from .curiosity_engine import (
-    CuriosityEngine,
-    KnowledgeGap,
-    CuriosityQuery,
-    GapType,
-    GapPriority
-)
-
-from .world_model import (
-    WorldModel,
-    WorldEntity,
-    WorldDynamics
-)
-
-from .dream_engine import (
-    DreamEngine,
-    Dream,
-    DreamType,
-    DreamStatus
-)
-
-from .meta_brain import (
-    MetaBrain,
-    CognitiveMetric,
-    SelfReflection
-)
-
+from .cognitive_dna import CognitiveDNA, CognitiveDNAManager, CognitiveDNAStore
+from .cognitive_event_system import CognitiveEventStore, CognitiveEventSystem
 from .cognitive_evolution_protocol import (
     CognitiveEvolutionProtocol,
     EvolutionGoal,
     EvolutionIteration,
     EvolutionPhase,
-    ImprovementType
+    ImprovementType,
 )
-
-from .cognitive_constitution import (
-    CognitiveConstitution,
-    Principle,
-    GovernanceRule,
-    ConstitutionalViolation,
-    PrincipleCategory
-)
-
 from .cognitive_version_control import (
     CognitiveVersionControl,
     SystemVersion,
-    VersionCheckpoint
+    VersionCheckpoint,
 )
+from .concept_engine import Concept, ConceptEngine, ConceptStore
+from .context_analyzer import (
+    ContextAnalysis,
+    ContextAnalyzer,
+    get_context_analyzer,
+)
+from .curiosity_engine import (
+    CuriosityEngine,
+    CuriosityQuery,
+    GapPriority,
+    GapType,
+    KnowledgeGap,
+)
+from .dream_engine import Dream, DreamEngine, DreamStatus, DreamType
+from .evidence_court import (
+    EvidenceCourt,
+    EvidenceItem,
+    EvidenceQuality,
+    SourceType,
+    ValidationReport,
+)
+from .experience_memory import (
+    Experience,
+    ExperienceMemory,
+    ExperienceType,
+    LearnedLesson,
+)
+from .experiment_engine import (
+    Experiment,
+    ExperimentDesign,
+    ExperimentEngine,
+    ExperimentStatus,
+    ExperimentType,
+)
+from .hypothesis_engine import Hypothesis, HypothesisEngine, HypothesisStatus
+from .intent_analyzer import (
+    Intent,
+    IntentAnalyzer,
+    IntentCategory,
+    get_intent_analyzer,
+)
+from .knowledge_physics_engine import (
+    CausalLaw,
+    CausalLawStore,
+    CausalStrength,
+    KnowledgePhysicsEngine,
+)
+from .meta_brain import CognitiveMetric, MetaBrain, SelfReflection
+from .model_society import ExpertiseLevel, ExpertModel, ModelInteraction, ModelSociety
+from .reasoning_engine import (
+    LLMCallError,
+    ReasoningEngine,
+    ReasoningEngineError,
+    ReasoningResult,
+    ReasoningStep,
+    ReasoningStrategy,
+    RiskAssessment,
+    SolutionOption,
+    ValidationError,
+    create_reasoning_engine,
+    get_reasoning_engine,
+    reset_reasoning_engine,
+)
+from .world_model import WorldDynamics, WorldEntity, WorldModel
 
 __all__ = [
     "IntentAnalyzer",

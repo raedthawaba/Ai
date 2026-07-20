@@ -8,10 +8,10 @@ Tests the functionality of:
 """
 
 import unittest
-from datetime import datetime, timedelta
-from cognitive_compiler import CognitiveCompiler, CognitiveEvent, EventType
-from cognitive_event_system import CognitiveEventSystem, CognitiveEventStore
-from concept_engine import ConceptEngine, Concept
+
+from cognitive_compiler import CognitiveCompiler
+from cognitive_event_system import CognitiveEventSystem
+from concept_engine import ConceptEngine
 
 
 class TestCognitiveCompiler(unittest.TestCase):

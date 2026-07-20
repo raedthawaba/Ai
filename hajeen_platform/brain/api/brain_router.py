@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -78,7 +78,8 @@ async def brain_chat(req: BrainChatRequest):
     المسار الكامل لـ Hajeen Brain:
     Policy → Goal → Decompose → Plan → Decide → Execute → Distill → Reflect
     """
-    from brain import BrainRequest, get_brain as _get_brain
+    from brain import BrainRequest
+    from brain import get_brain as _get_brain
     brain = await _get_brain()
 
     brain_req = BrainRequest(
@@ -108,7 +109,8 @@ async def brain_chat(req: BrainChatRequest):
 @router.post("/stream")
 async def brain_stream(req: BrainChatRequest):
     """محادثة متدفقة (Server-Sent Events) عبر Brain."""
-    from brain import BrainRequest, get_brain as _get_brain
+    from brain import BrainRequest
+    from brain import get_brain as _get_brain
     brain = await _get_brain()
 
     brain_req = BrainRequest(
@@ -295,9 +297,9 @@ async def distillation_stats():
 @router.post("/learn")
 async def add_training_data(req: LearnRequest):
     """إضافة بيانات تدريب يدوياً من قِبَل الإنسان."""
+
+
     from brain import get_brain as _get_brain
-    from knowledge.knowledge_distillation import DistilledKnowledge
-    import uuid, time
 
     brain = await _get_brain()
     knowledge = await brain.distillation.distill(

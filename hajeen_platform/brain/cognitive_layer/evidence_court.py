@@ -6,13 +6,13 @@ its credibility and consistency before it is integrated into the system's long-t
 knowledge base.
 """
 
-import uuid
-from datetime import datetime
-from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, field, asdict
-from enum import Enum
 import json
 import logging
+import uuid
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
+from enum import Enum
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -365,7 +365,7 @@ class EvidenceCourt:
         }
         
         self.known_contradictions.append(contradiction)
-        self.logger.info(f"Registered contradiction between claims")
+        self.logger.info("Registered contradiction between claims")
     
     def get_validation_report(self, report_id: str) -> Optional[ValidationReport]:
         """

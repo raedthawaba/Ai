@@ -17,8 +17,6 @@ Model Router v3 — موجّه النماذج الذكي
 
 from __future__ import annotations
 
-import asyncio
-import json
 import logging
 import time
 import uuid
@@ -26,8 +24,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from hajeen_platform.core.llm import LLMManager
 from hajeen_platform.brain.goal_manager import Goal
+from hajeen_platform.core.llm import LLMManager
 
 logger = logging.getLogger(__name__)
 

@@ -5,13 +5,12 @@ This module manages the lifecycle of cognitive events, providing storage, retrie
 and querying capabilities for the system's cognitive experiences.
 """
 
-import uuid
-from datetime import datetime
-from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, field
 import json
 import logging
+import uuid
 from collections import defaultdict
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 

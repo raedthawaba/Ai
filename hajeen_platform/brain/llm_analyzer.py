@@ -1,7 +1,9 @@
-from typing import List, Literal
-from pydantic import BaseModel, Field
-from openai import OpenAI
 import os
+from typing import List, Literal
+
+from openai import OpenAI
+from pydantic import BaseModel
+
 
 class LLMAnalysisResult(BaseModel):
     intent: Literal["question", "task", "creative", "analysis", "code", "research", "training", "data", "conversation", "planning"]

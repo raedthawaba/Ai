@@ -1,6 +1,6 @@
 """Brain Reflection Package — التفكير الذاتي والتطور."""
-from .self_reflection import SelfReflection, ReflectionReport, get_self_reflection
-from .self_evolution import SelfEvolution, EvolutionProposal, get_self_evolution
+from .self_evolution import EvolutionProposal, SelfEvolution, get_self_evolution
+from .self_reflection import ReflectionReport, SelfReflection, get_self_reflection
 
 __all__ = [
     "SelfReflection", "ReflectionReport", "get_self_reflection",

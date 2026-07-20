@@ -6,13 +6,13 @@ evaluates each one, gathers supporting evidence, simulates outcomes, and selects
 the strongest hypothesis based on available evidence.
 """
 
-import uuid
-from datetime import datetime
-from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, field, asdict
-from enum import Enum
 import json
 import logging
+import uuid
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
+from enum import Enum
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 

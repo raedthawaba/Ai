@@ -307,7 +307,7 @@ class AutonomousImprovement:
                 expected_impact="تسريع المعالجة 10-20% للطلبات الشائعة",
                 implementation_steps=[
                     f"إضافة قالب محسّن لـ {most_common} في Goal Manager",
-                    f"إضافة Procedure في Procedural Memory",
+                    "إضافة Procedure في Procedural Memory",
                     "اختبار التحسينات",
                 ],
                 estimated_effort="hours",

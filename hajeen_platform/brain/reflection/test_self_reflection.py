@@ -1,6 +1,8 @@
 
 import asyncio
+
 from hajeen_platform.brain.reflection.self_reflection import get_self_reflection
+
 
 async def main():
     reflector = await get_self_reflection()

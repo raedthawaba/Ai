@@ -209,7 +209,7 @@ class KnowledgeDistillationPipeline:
             # البحث عن خطوات (أرقام، نقاط، أولاً/ثانياً)
             if any([
                 line.startswith(f"{i}.") or line.startswith(f"{i})") or
-                line.startswith(f"- ") or line.startswith(f"• ")
+                line.startswith("- ") or line.startswith("• ")
                 for i in range(1, 10)
             ]) or any(kw in line for kw in ["أولاً", "ثانياً", "ثالثاً", "أخيراً"]):
                 if len(line) > 10:

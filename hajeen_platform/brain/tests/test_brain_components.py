@@ -4,9 +4,10 @@
 from __future__ import annotations
 
 import asyncio
-import pytest
-import sys
 import os
+import sys
+
+import pytest
 
 # إضافة مسار المشروع
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
@@ -82,8 +83,8 @@ class TestTaskDecomposer:
 class TestGraphPlanner:
     def setup_method(self):
         from brain.goal_manager import GoalManager
-        from brain.task_decomposer import TaskDecomposer
         from brain.graph_planner import GraphPlanner
+        from brain.task_decomposer import TaskDecomposer
         self.gm = GoalManager()
         self.td = TaskDecomposer()
         self.gp = GraphPlanner()
@@ -189,7 +190,7 @@ class TestMemoryFabric:
 
 class TestPolicyEngine:
     def setup_method(self):
-        from brain.policy.policy_engine import PolicyEngine, PolicyDecision
+        from brain.policy.policy_engine import PolicyDecision, PolicyEngine
         self.pe = PolicyEngine()
         self.PolicyDecision = PolicyDecision
 

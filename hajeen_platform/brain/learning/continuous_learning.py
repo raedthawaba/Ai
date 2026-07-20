@@ -397,14 +397,14 @@ class ContinuousLearningPipeline:
 
         try:
             import torch
+            from datasets import Dataset as HFDataset
             from transformers import (
                 AutoModelForCausalLM,
                 AutoTokenizer,
-                TrainingArguments,
-                Trainer,
                 DataCollatorForLanguageModeling,
+                Trainer,
+                TrainingArguments,
             )
-            from datasets import Dataset as HFDataset
 
             samples: List[Dict] = []
             with open(dataset_path, "r", encoding="utf-8") as f:
@@ -432,7 +432,7 @@ class ContinuousLearningPipeline:
 
             if cfg.get("use_lora", True):
                 try:
-                    from peft import LoraConfig, get_peft_model, TaskType
+                    from peft import LoraConfig, TaskType, get_peft_model
                     lora_cfg = LoraConfig(
                         task_type=TaskType.CAUSAL_LM,
                         r=cfg.get("lora_rank", 16),
@@ -542,6 +542,7 @@ class ContinuousLearningPipeline:
 
         try:
             import math
+
             import torch
             from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -606,7 +607,7 @@ class ContinuousLearningPipeline:
             # BLEU تقريبي
             try:
                 import nltk
-                from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
+                from nltk.translate.bleu_score import SmoothingFunction, corpus_bleu
                 nltk.download("punkt", quiet=True)
                 references, hypotheses = [], []
                 for sample in eval_samples[:20]:

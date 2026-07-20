@@ -6,13 +6,13 @@ specific expertise domains, and coordinates their interactions for collaborative
 problem-solving and knowledge synthesis.
 """
 
-import uuid
-from datetime import datetime
-from typing import Dict, List, Any, Optional, Callable
-from dataclasses import dataclass, field, asdict
-from enum import Enum
 import json
 import logging
+import uuid
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
+from enum import Enum
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 

@@ -28,14 +28,13 @@ from __future__ import annotations
 
 import json
 import logging
-import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
+from hajeen_platform.brain.goal_manager import Goal, IntentType
 from hajeen_platform.core.llm import LLMManager
-from hajeen_platform.brain.goal_manager import Goal, IntentType, ComplexityLevel
 
 logger = logging.getLogger(__name__)
 

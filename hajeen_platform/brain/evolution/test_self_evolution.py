@@ -1,10 +1,14 @@
 import asyncio
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
-from hajeen_platform.brain.evolution.self_evolution import SelfEvolution, EvolutionProposal, get_self_evolution_engine
+from unittest.mock import AsyncMock, MagicMock
+
+from hajeen_platform.brain.evolution.self_evolution import (
+    SelfEvolution,
+    get_self_evolution_engine,
+)
 from hajeen_platform.brain.reflection.self_reflection import ReflectionReport
-from hajeen_platform.brain.goal_manager import Goal, IntentType, ComplexityLevel
 from hajeen_platform.core.llm.base import LLMResponse
+
 
 async def main():
     # Mock dependencies

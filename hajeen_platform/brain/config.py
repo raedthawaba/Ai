@@ -9,8 +9,7 @@ from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-from functools import lru_cache
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -150,6 +149,7 @@ class ReasoningEngineConfig(BaseModel):
     def from_file(cls, path: Path) -> "ReasoningEngineConfig":
         """تحميل الإعدادات من ملف YAML أو JSON."""
         import json
+
         import yaml
         
         path = Path(path)
@@ -167,6 +167,7 @@ class ReasoningEngineConfig(BaseModel):
     def to_file(self, path: Path) -> None:
         """حفظ الإعدادات إلى ملف."""
         import json
+
         import yaml
         
         path = Path(path)

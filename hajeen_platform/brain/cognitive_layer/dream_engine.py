@@ -5,13 +5,13 @@ The Dream Engine performs background processing during idle periods, consolidati
 knowledge, exploring hypothetical scenarios, and preparing for future challenges.
 """
 
-import uuid
-from datetime import datetime
-from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, field, asdict
-from enum import Enum
 import json
 import logging
+import uuid
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
+from enum import Enum
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -238,7 +238,7 @@ class DreamEngine:
         """Extract insights from scenario exploration."""
         insights = [
             f"Insight 1: Scenario {scenario.get('description', 'unknown')} reveals important patterns",
-            f"Insight 2: Multiple pathways exist for handling this scenario",
+            "Insight 2: Multiple pathways exist for handling this scenario",
             "Insight 3: Preparation and flexibility are key"
         ]
         
@@ -262,7 +262,7 @@ class DreamEngine:
         # Simulate pattern discovery
         patterns = [
             f"Pattern 1: Recurring theme in {len(data)} data points",
-            f"Pattern 2: Correlation between variables detected",
+            "Pattern 2: Correlation between variables detected",
             "Pattern 3: Cyclic behavior identified"
         ]
         

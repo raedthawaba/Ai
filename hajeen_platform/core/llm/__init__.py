@@ -1,7 +1,7 @@
 """Phase 8 — LLM Provider Architecture."""
 from .base import BaseLLMProvider, LLMConfig, LLMRequest, LLMResponse, LLMStreamChunk
 from .provider_registry import ProviderRegistry
-from .llm_manager import LLMManager
+from .llm_manager import LLMManager, get_llm_manager
 from .config import LLMSettings
 
 __all__ = [
@@ -12,5 +12,6 @@ __all__ = [
     "LLMStreamChunk",
     "ProviderRegistry",
     "LLMManager",
+    "get_llm_manager",
     "LLMSettings",
 ]

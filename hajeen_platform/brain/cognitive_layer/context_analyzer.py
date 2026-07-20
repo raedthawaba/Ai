@@ -22,9 +22,9 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from hajeen_platform.core.llm import LLMManager
-from hajeen_platform.core.embeddings import EmbeddingManager
 from hajeen_platform.brain.memory.memory_fabric import MemoryFabric
+from hajeen_platform.core.embeddings import EmbeddingManager
+from hajeen_platform.core.llm import LLMManager
 
 logger = logging.getLogger(__name__)
 

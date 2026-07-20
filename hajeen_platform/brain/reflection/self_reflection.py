@@ -16,18 +16,19 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
-from ..decision_engine import DecisionEngine, get_decision_engine
-from ..model_router import ModelRouter, get_model_router
-from ..policy.policy_engine import PolicyEngine, get_policy_engine
-from ..metrics.model_performance_db import ModelPerformanceDB, get_performance_db
-from hajeen_platform.brain.goal_manager import Goal, IntentType, ComplexityLevel
+from typing import Any, Dict, List, Optional
+
 from hajeen_platform.monitoring.metrics.prometheus_metrics import (
+    hajeen_reflection_latency_seconds,
     hajeen_reflection_reports_total,
     hajeen_reflection_score_overall,
-    hajeen_reflection_latency_seconds,
-    track_latency
+    track_latency,
 )
+
+from ..decision_engine import DecisionEngine, get_decision_engine
+from ..metrics.model_performance_db import ModelPerformanceDB, get_performance_db
+from ..model_router import ModelRouter, get_model_router
+from ..policy.policy_engine import PolicyEngine, get_policy_engine
 
 logger = logging.getLogger(__name__)
 
@@ -347,7 +348,7 @@ class SelfReflection:
 
         try:
             # Use DecisionEngine to select the best model for reflection
-            from ..goal_manager import Goal, IntentType, ComplexityLevel
+            from ..goal_manager import ComplexityLevel, Goal, IntentType
             goal = Goal(
                 goal_id=str(uuid.uuid4()),
                 intent=IntentType.REASONING,

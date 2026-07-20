@@ -10,12 +10,12 @@ import logging
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Union
-from hajeen_platform.core.llm.llm_manager import LLMManager, get_llm_manager
-from hajeen_platform.workers.async_tasks import llm_inference_task
-from hajeen_platform.core.llm.base import LLMResponse, LLMRequest
+from typing import Any, Dict, List, Optional
 
-from .goal_manager import Goal, IntentType, ComplexityLevel
+from hajeen_platform.core.llm.base import LLMRequest, LLMResponse
+from hajeen_platform.core.llm.llm_manager import LLMManager, get_llm_manager
+
+from .goal_manager import ComplexityLevel, Goal, IntentType
 
 logger = logging.getLogger(__name__)
 
@@ -255,6 +255,9 @@ class DecisionEngine:
     ) -> Optional[LLMResponse]:
         """ينفذ القرار المتخذ، ويرسل مهمة LLM إلى Celery إذا لزم الأمر."""
         if decision.resource_type in [ResourceType.CLOUD_MODEL, ResourceType.LOCAL_MODEL]:
+            # Lazy import to avoid circular dependency
+            from hajeen_platform.workers.async_tasks import llm_inference_task
+            
             logger.info(f"DecisionEngine: Dispatching LLM inference for task {decision.task_id} to Celery.")
 
             # Prepare goal data for serialization

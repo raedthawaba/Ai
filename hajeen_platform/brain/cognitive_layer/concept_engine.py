@@ -5,12 +5,12 @@ The Concept Engine evolves the traditional Knowledge Graph into a dynamic system
 of independent cognitive entities, each with rich metadata and evolutionary history.
 """
 
-import uuid
-from datetime import datetime
-from typing import Dict, List, Any, Optional, Set
-from dataclasses import dataclass, field, asdict
 import json
 import logging
+import uuid
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
