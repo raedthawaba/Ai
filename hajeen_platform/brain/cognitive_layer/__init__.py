@@ -28,8 +28,16 @@ from .context_analyzer import (
 from .reasoning_engine import (
     ReasoningEngine,
     ReasoningResult,
+    ReasoningStep,
+    RiskAssessment,
+    SolutionOption,
     ReasoningStrategy,
+    ReasoningEngineError,
+    LLMCallError,
+    ValidationError,
     get_reasoning_engine,
+    reset_reasoning_engine,
+    create_reasoning_engine,
 )
 
 from .cognitive_compiler import (
@@ -161,8 +169,16 @@ __all__ = [
     "get_context_analyzer",
     "ReasoningEngine",
     "ReasoningResult",
+    "ReasoningStep",
+    "RiskAssessment",
+    "SolutionOption",
     "ReasoningStrategy",
+    "ReasoningEngineError",
+    "LLMCallError",
+    "ValidationError",
     "get_reasoning_engine",
+    "reset_reasoning_engine",
+    "create_reasoning_engine",
     "CognitiveCompiler",
     "CognitiveEvent",
     "EventType",

@@ -2,114 +2,123 @@
 Reasoning Engine — محرك الاستدلال العميق
 ========================================
 
-يقوم بـ:
-- تحليل المشكلة بعمق
-- اكتشاف المعلومات الناقصة
-- تقييم المخاطر
-- اقتراح الحلول
-- المقارنة بين البدائل
-- اختيار أفضل خطة
-
-يستخدم chain-of-thought reasoning و multi-step analysis.
+محرك استدلال مستقر وقابل للاعتماد مع:
+- إعدادات مركزية (Pydantic)
+- سجل تنفيذي كامل (Execution Trace)
+- مقاييس موحدة (Metrics)
+- معالجة أخطاء متقدمة (Error Recovery)
+- تخزين مؤقت (Caching)
 """
 
 from __future__ import annotations
 
 import json
-import logging
 import time
 import uuid
-from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
+
+import structlog
+from pydantic import BaseModel, Field
 
 from hajeen_platform.core.llm import LLMManager
 
-logger = logging.getLogger(__name__)
+from brain.config import (
+    ReasoningEngineConfig,
+    get_default_config,
+    ReasoningStrategyType,
+)
+from brain.execution_trace import (
+    ExecutionTrace,
+    ExecutionTraceManager,
+    TraceLevel,
+)
+from brain.metrics_engine import MetricsCollector, get_metrics_collector
+
+logger = structlog.get_logger(__name__)
 
 
 class ReasoningStrategy(str, Enum):
     """استراتيجيات الاستدلال."""
-    CHAIN_OF_THOUGHT = "chain_of_thought"          # سلسلة من الخطوات
-    TREE_OF_THOUGHT = "tree_of_thought"            # شجرة من الخيارات
-    DECOMPOSITION = "decomposition"                # تفكيك المشكلة
-    ANALOGY = "analogy"                            # القياس والتشبيه
-    FIRST_PRINCIPLES = "first_principles"          # المبادئ الأساسية
-    MULTI_PERSPECTIVE = "multi_perspective"        # وجهات نظر متعددة
+    CHAIN_OF_THOUGHT = "chain_of_thought"
+    TREE_OF_THOUGHT = "tree_of_thought"
+    DECOMPOSITION = "decomposition"
+    ANALOGY = "analogy"
+    FIRST_PRINCIPLES = "first_principles"
+    MULTI_PERSPECTIVE = "multi_perspective"
+
+    @classmethod
+    def from_config(cls, strategy_type: Union[str, ReasoningStrategyType]) -> "ReasoningStrategy":
+        """التحويل من نوع الإعدادات."""
+        if isinstance(strategy_type, cls):
+            return strategy_type
+        if isinstance(strategy_type, ReasoningStrategyType):
+            return cls(strategy_type.value)
+        return cls(strategy_type)
 
 
-@dataclass
-class ReasoningStep:
+class ReasoningStep(BaseModel):
     """خطوة واحدة في الاستدلال."""
-    step_id: str
+    step_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     step_number: int
     description: str
     reasoning: str
     conclusion: str
-    confidence: float
-    alternatives: List[str]
+    confidence: float = Field(ge=0.0, le=1.0, default=0.5)
+    alternatives: List[str] = Field(default_factory=list)
 
 
-@dataclass
-class RiskAssessment:
+class RiskAssessment(BaseModel):
     """تقييم المخاطر."""
-    risk_id: str
-    risk_type: str  # technical, operational, security, etc.
+    risk_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    risk_type: str
     description: str
-    severity: str  # low, medium, high, critical
-    probability: float  # 0-1
+    severity: str = Field(pattern="^(low|medium|high|critical)$")
+    probability: float = Field(ge=0.0, le=1.0)
     impact: str
     mitigation_strategy: str
 
 
-@dataclass
-class SolutionOption:
+class SolutionOption(BaseModel):
     """خيار حل."""
-    option_id: str
+    option_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     title: str
     description: str
-    pros: List[str]
-    cons: List[str]
-    effort_estimate: str  # low, medium, high
-    time_estimate: str
-    risk_level: str
-    feasibility_score: float  # 0-1
-    recommended: bool
+    pros: List[str] = Field(default_factory=list)
+    cons: List[str] = Field(default_factory=list)
+    effort_estimate: str = Field(pattern="^(low|medium|high)$", default="medium")
+    time_estimate: str = ""
+    risk_level: str = Field(pattern="^(low|medium|high)$", default="medium")
+    feasibility_score: float = Field(ge=0.0, le=1.0, default=0.5)
+    recommended: bool = False
 
 
-@dataclass
-class ReasoningResult:
+class ReasoningResult(BaseModel):
     """نتيجة الاستدلال الكاملة."""
     reasoning_id: str
     strategy_used: ReasoningStrategy
     
-    # الخطوات
-    reasoning_steps: List[ReasoningStep]
+    reasoning_steps: List[ReasoningStep] = Field(default_factory=list)
+    missing_information: List[str] = Field(default_factory=list)
+    risks: List[RiskAssessment] = Field(default_factory=list)
+    solution_options: List[SolutionOption] = Field(default_factory=list)
+    recommended_solution: Optional[SolutionOption] = None
     
-    # المعلومات الناقصة
-    missing_information: List[str]
+    overall_confidence: float = Field(ge=0.0, le=1.0, default=0.0)
+    reasoning_summary: str = ""
     
-    # تقييم المخاطر
-    risks: List[RiskAssessment]
-    
-    # الحلول المقترحة
-    solution_options: List[SolutionOption]
-    
-    # الخيار الأفضل
-    recommended_solution: Optional[SolutionOption]
-    
-    # الثقة والاستدلال
-    overall_confidence: float
-    reasoning_summary: str
-    
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    created_at: float = field(default_factory=time.time)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    created_at: float = Field(default_factory=time.time)
+    trace_id: Optional[str] = None
+
+    model_config = {"use_enum_values": True}
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "reasoning_id": self.reasoning_id,
-            "strategy_used": self.strategy_used.value,
+            "strategy_used": self.strategy_used.value if isinstance(self.strategy_used, ReasoningStrategy) else self.strategy_used,
             "reasoning_steps": len(self.reasoning_steps),
+            "reasoning_steps_details": [s.model_dump() for s in self.reasoning_steps],
             "missing_information": self.missing_information,
             "risks": len(self.risks),
             "solution_options": len(self.solution_options),
@@ -117,72 +126,194 @@ class ReasoningResult:
             "overall_confidence": round(self.overall_confidence, 3),
             "reasoning_summary": self.reasoning_summary,
             "created_at": self.created_at,
+            "trace_id": self.trace_id,
         }
+
+
+class ReasoningEngineError(Exception):
+    """خطأ في محرك الاستدلال."""
+    pass
+
+
+class LLMCallError(ReasoningEngineError):
+    """خطأ في استدعاء LLM."""
+    pass
+
+
+class ValidationError(ReasoningEngineError):
+    """خطأ في التحقق."""
+    pass
 
 
 class ReasoningEngine:
     """
-    محرك الاستدلال العميق.
+    محرك الاستدلال العميق - نسخة مستقرة.
     
-    يستخدم LLM مع prompts متخصصة لإجراء استدلال متعدد الخطوات.
+    المميزات:
+    - إعدادات مركزية
+    - سجل تنفيذي كامل
+    - مقاييس موحدة
+    - معالجة أخطاء متقدمة
+    - تخزين مؤقت
     """
 
-    def __init__(self, llm_manager: LLMManager) -> None:
+    def __init__(
+        self,
+        llm_manager: LLMManager,
+        config: Optional[ReasoningEngineConfig] = None,
+        trace_manager: Optional[ExecutionTraceManager] = None,
+        metrics_collector: Optional[MetricsCollector] = None,
+    ) -> None:
         self.llm_manager = llm_manager
+        self.config = config or get_default_config()
+        self.trace_manager = trace_manager or ExecutionTraceManager(
+            enabled=self.config.execution_trace.enabled,
+            level=TraceLevel.STANDARD,
+            persist_traces=self.config.execution_trace.persist_traces,
+            storage_path=self.config.execution_trace.trace_storage_path,
+        )
+        self.metrics = metrics_collector or get_metrics_collector()
+        
         self._reasoning_cache: Dict[str, ReasoningResult] = {}
-        logger.info("ReasoningEngine: initialized")
+        self._init_cache()
+        
+        logger.info(
+            "reasoning_engine_initialized",
+            config_version=self.config.version,
+            strategy=self.config.reasoning_strategy.default_strategy.value,
+            cache_enabled=self.config.cache.enabled,
+        )
+
+    def _init_cache(self) -> None:
+        """تهيئة التخزين المؤقت."""
+        if self.config.cache.enabled:
+            logger.info(
+                "cache_initialized",
+                max_entries=self.config.cache.max_entries,
+                ttl_seconds=self.config.cache.ttl_seconds,
+            )
+
+    def _get_cache_key(self, problem: str, strategy: ReasoningStrategy, context: Optional[Dict[str, Any]]) -> str:
+        """إنشاء مفتاح للـ cache."""
+        import hashlib
+        content = f"{problem}:{strategy.value}:{json.dumps(context or {}, sort_keys=True)}"
+        return f"{self.config.cache.cache_key_prefix}_{hashlib.md5(content.encode()).hexdigest()}"
+
+    def _get_from_cache(self, cache_key: str) -> Optional[ReasoningResult]:
+        """الحصول من التخزين المؤقت."""
+        if not self.config.cache.enabled:
+            return None
+        
+        cached = self._reasoning_cache.get(cache_key)
+        if cached:
+            age = time.time() - cached.created_at
+            if age > self.config.cache.ttl_seconds:
+                del self._reasoning_cache[cache_key]
+                return None
+            return cached
+        return None
+
+    def _save_to_cache(self, cache_key: str, result: ReasoningResult) -> None:
+        """حفظ في التخزين المؤقت."""
+        if not self.config.cache.enabled:
+            return
+        
+        if len(self._reasoning_cache) >= self.config.cache.max_entries:
+            oldest = min(self._reasoning_cache.items(), key=lambda x: x[1].created_at)
+            del self._reasoning_cache[oldest[0]]
+        
+        self._reasoning_cache[cache_key] = result
 
     async def reason(
         self,
         problem: str,
         context: Optional[Dict[str, Any]] = None,
-        strategy: ReasoningStrategy = ReasoningStrategy.CHAIN_OF_THOUGHT,
+        strategy: Optional[ReasoningStrategy] = None,
+        enable_trace: bool = True,
     ) -> ReasoningResult:
         """
         إجراء استدلال عميق حول مشكلة.
         
         الخطوات:
-        1. تحليل المشكلة
-        2. اكتشاف المعلومات الناقصة
-        3. تقييم المخاطر
-        4. اقتراح الحلول
-        5. المقارنة والتقييم
+        1. التحقق من المدخلات
+        2. محاولة الحصول من التخزين المؤقت
+        3. تحليل المشكلة
+        4. اكتشاف المعلومات الناقصة
+        5. تقييم المخاطر
+        6. اقتراح الحلول
+        7. اختيار أفضل حل
         """
+        start_time = time.time()
         reasoning_id = str(uuid.uuid4())
         
+        if strategy is None:
+            strategy = ReasoningStrategy.from_config(
+                self.config.reasoning_strategy.default_strategy
+            )
+        
+        if not problem or not problem.strip():
+            raise ValidationError("المشكلة لا يمكن أن تكون فارغة")
+        
+        if len(problem) > self.config.max_context_length:
+            raise ValidationError(f"المشكلة طويلة جداً (الحد الأقصى: {self.config.max_context_length})")
+        
+        trace: Optional[ExecutionTrace] = None
+        if enable_trace:
+            trace = self.trace_manager.start_trace(
+                reasoning_id=reasoning_id,
+                problem=problem,
+                strategy=strategy.value,
+                context=context,
+            )
+        
+        cache_key = self._get_cache_key(problem, strategy, context)
+        cached_result = self._get_from_cache(cache_key)
+        if cached_result:
+            self.metrics.increment("reasoning_total")
+            self.metrics.increment("reasoning_success")
+            self.metrics.record_timing("reasoning", (time.time() - start_time) * 1000, success=True)
+            return cached_result
+        
         try:
-            # ── Step 1: تحليل المشكلة ─────────────────────────────────
-            reasoning_steps = await self._perform_chain_of_thought(
+            self.trace_manager.record_step(
+                reasoning_id, "analyze_problem", 1,
+                input_data={"problem": problem, "strategy": strategy.value},
+            )
+            
+            reasoning_steps = await self._perform_reasoning(
                 problem, context, strategy
             )
             
-            # ── Step 2: اكتشاف المعلومات الناقصة ──────────────────────
+            self.trace_manager.record_step(
+                reasoning_id, "analyze_problem", 1,
+                output_data={"steps_count": len(reasoning_steps)},
+                success=True,
+            )
+            
             missing_info = await self._identify_missing_information(
                 problem, context, reasoning_steps
             )
             
-            # ── Step 3: تقييم المخاطر ─────────────────────────────────
-            risks = await self._assess_risks(problem, context, reasoning_steps)
+            risks = []
+            if self.config.risk_assessment.enabled:
+                risks = await self._assess_risks(problem, context, reasoning_steps)
             
-            # ── Step 4: اقتراح الحلول ─────────────────────────────────
-            solutions = await self._propose_solutions(
-                problem, context, reasoning_steps, risks
-            )
+            solutions = []
+            if self.config.solution.enabled:
+                solutions = await self._propose_solutions(
+                    problem, context, reasoning_steps, risks
+                )
             
-            # ── Step 5: اختيار أفضل حل ───────────────────────────────
             recommended = await self._select_best_solution(solutions)
             
-            # ── Step 6: بناء الملخص ──────────────────────────────────
             summary = self._build_reasoning_summary(
                 reasoning_steps, missing_info, risks, solutions, recommended
             )
             
-            # ── Step 7: حساب الثقة الكلية ────────────────────────────
             overall_confidence = self._calculate_overall_confidence(
                 reasoning_steps, solutions, recommended
             )
             
-            # بناء النتيجة
             result = ReasoningResult(
                 reasoning_id=reasoning_id,
                 strategy_used=strategy,
@@ -193,46 +324,242 @@ class ReasoningEngine:
                 recommended_solution=recommended,
                 overall_confidence=overall_confidence,
                 reasoning_summary=summary,
-                metadata={"problem": problem, "context": context or {}},
+                metadata={
+                    "problem": problem,
+                    "context": context or {},
+                    "config_version": self.config.version,
+                },
+                trace_id=trace.trace_id if trace else None,
             )
             
-            # تخزين مؤقت
-            self._reasoning_cache[reasoning_id] = result
+            self._save_to_cache(cache_key, result)
+            
+            if trace:
+                self.trace_manager.end_trace(
+                    reasoning_id,
+                    success=True,
+                    final_confidence=overall_confidence,
+                )
+            
+            self.metrics.increment("reasoning_total")
+            self.metrics.increment("reasoning_success")
+            self.metrics.observe_histogram("reasoning_confidence", overall_confidence)
+            self.metrics.record_timing(
+                "reasoning",
+                (time.time() - start_time) * 1000,
+                success=True,
+            )
             
             logger.info(
-                "reasoning_engine: completed reasoning reasoning_id=%s steps=%d solutions=%d confidence=%.3f",
-                reasoning_id, len(reasoning_steps), len(solutions), overall_confidence
+                "reasoning_completed",
+                reasoning_id=reasoning_id,
+                steps=len(reasoning_steps),
+                solutions=len(solutions),
+                confidence=round(overall_confidence, 3),
+                duration_ms=round((time.time() - start_time) * 1000, 2),
             )
             
             return result
         
         except Exception as e:
-            logger.error("reasoning_engine: error during reasoning: %s", e, exc_info=True)
-            # استجابة احتياطية
-            return ReasoningResult(
-                reasoning_id=reasoning_id,
-                strategy_used=strategy,
-                reasoning_steps=[],
-                missing_information=["فشل التحليل"],
-                risks=[],
-                solution_options=[],
-                recommended_solution=None,
-                overall_confidence=0.3,
-                reasoning_summary="فشل الاستدلال، يرجى المحاولة لاحقاً",
-                metadata={"error": str(e)},
+            logger.error("reasoning_failed", reasoning_id=reasoning_id, error=str(e))
+            
+            if trace:
+                self.trace_manager.end_trace(reasoning_id, success=False)
+            
+            self.metrics.increment("reasoning_total")
+            self.metrics.increment("reasoning_errors")
+            self.metrics.record_timing(
+                "reasoning",
+                (time.time() - start_time) * 1000,
+                success=False,
             )
+            
+            if self.config.error_recovery.enable_fallback:
+                return self._create_fallback_result(reasoning_id, strategy, str(e))
+            
+            raise
 
-    async def _perform_chain_of_thought(
+    def _create_fallback_result(
+        self,
+        reasoning_id: str,
+        strategy: ReasoningStrategy,
+        error: str,
+    ) -> ReasoningResult:
+        """إنشاء نتيجة احتياطية."""
+        self.trace_manager.record_fallback(
+            reasoning_id,
+            original_strategy=strategy.value,
+            fallback_strategy="fallback",
+            reason=error,
+        )
+        
+        return ReasoningResult(
+            reasoning_id=reasoning_id,
+            strategy_used=strategy,
+            reasoning_steps=[],
+            missing_information=["فشل التحليل"],
+            risks=[],
+            solution_options=[],
+            recommended_solution=None,
+            overall_confidence=self.config.error_recovery.fallback_confidence,
+            reasoning_summary="فشل الاستدلال، يرجى المحاولة لاحقاً",
+            metadata={"error": error, "fallback": True},
+        )
+
+    async def _perform_reasoning(
         self,
         problem: str,
         context: Optional[Dict[str, Any]],
         strategy: ReasoningStrategy,
     ) -> List[ReasoningStep]:
-        """إجراء chain-of-thought reasoning."""
-        try:
-            context_str = json.dumps(context, ensure_ascii=False) if context else ""
+        """إجراء الاستدلال بناءً على الاستراتيجية."""
+        strategy_map = {
+            ReasoningStrategy.CHAIN_OF_THOUGHT: self._chain_of_thought,
+            ReasoningStrategy.TREE_OF_THOUGHT: self._tree_of_thought,
+            ReasoningStrategy.DECOMPOSITION: self._decomposition,
+            ReasoningStrategy.FIRST_PRINCIPLES: self._first_principles,
+            ReasoningStrategy.MULTI_PERSPECTIVE: self._multi_perspective,
+            ReasoningStrategy.ANALOGY: self._analogy,
+        }
+        
+        handler = strategy_map.get(strategy, self._chain_of_thought)
+        return await handler(problem, context)
+
+    async def _chain_of_thought(
+        self,
+        problem: str,
+        context: Optional[Dict[str, Any]],
+    ) -> List[ReasoningStep]:
+        """استدلال سلسلة الأفكار."""
+        return await self._execute_llm_reasoning(
+            prompt=self._build_cot_prompt(problem, context),
+            model=self.config.llm.reasoning_model,
+        )
+
+    async def _tree_of_thought(
+        self,
+        problem: str,
+        context: Optional[Dict[str, Any]],
+    ) -> List[ReasoningStep]:
+        """استدلال شجرة الأفكار."""
+        return await self._execute_llm_reasoning(
+            prompt=self._build_tot_prompt(problem, context),
+            model=self.config.llm.primary_model,
+        )
+
+    async def _decomposition(
+        self,
+        problem: str,
+        context: Optional[Dict[str, Any]],
+    ) -> List[ReasoningStep]:
+        """تفكيك المشكلة."""
+        return await self._execute_llm_reasoning(
+            prompt=self._build_decomposition_prompt(problem, context),
+            model=self.config.llm.reasoning_model,
+        )
+
+    async def _first_principles(
+        self,
+        problem: str,
+        context: Optional[Dict[str, Any]],
+    ) -> List[ReasoningStep]:
+        """الاستدلال من المبادئ الأولى."""
+        return await self._execute_llm_reasoning(
+            prompt=self._build_first_principles_prompt(problem, context),
+            model=self.config.llm.primary_model,
+        )
+
+    async def _multi_perspective(
+        self,
+        problem: str,
+        context: Optional[Dict[str, Any]],
+    ) -> List[ReasoningStep]:
+        """وجهات نظر متعددة."""
+        return await self._execute_llm_reasoning(
+            prompt=self._build_multi_perspective_prompt(problem, context),
+            model=self.config.llm.primary_model,
+        )
+
+    async def _analogy(
+        self,
+        problem: str,
+        context: Optional[Dict[str, Any]],
+    ) -> List[ReasoningStep]:
+        """الاستدلال بالقياس."""
+        return await self._execute_llm_reasoning(
+            prompt=self._build_analogy_prompt(problem, context),
+            model=self.config.llm.reasoning_model,
+        )
+
+    async def _execute_llm_reasoning(
+        self,
+        prompt: str,
+        model: str,
+    ) -> List[ReasoningStep]:
+        """تنفيذ الاستدلال عبر LLM."""
+        llm_start = time.time()
+        
+        for attempt in range(self.config.llm.retry_attempts):
+            try:
+                response = await self._call_llm_with_retry(
+                    prompt=prompt,
+                    model=model,
+                )
+                
+                self.trace_manager.record_llm_call(
+                    reasoning_id="",
+                    model=model,
+                    prompt_length=len(prompt),
+                    start_time=llm_start,
+                    end_time=time.time(),
+                    success=True,
+                    response_length=len(response),
+                )
+                
+                steps = self._parse_steps_response(response)
+                if steps:
+                    return steps
+                
+                if attempt < self.config.llm.retry_attempts - 1:
+                    self.trace_manager.record_retry(attempt + 1, self.config.llm.retry_attempts)
+                    self.metrics.increment("llm_retry_total")
             
-            prompt = f"""قم بتحليل المشكلة التالية خطوة بخطوة:
+            except Exception as e:
+                logger.warning("llm_call_failed", attempt=attempt + 1, error=str(e))
+                
+                if attempt < self.config.llm.retry_attempts - 1:
+                    self.trace_manager.record_retry(attempt + 1, self.config.llm.retry_attempts, str(e))
+                    await self._async_sleep(self.config.llm.retry_delay_seconds)
+                else:
+                    self.metrics.increment("llm_call_errors")
+                    raise LLMCallError(f"فشل استدعاء LLM بعد {self.config.llm.retry_attempts} محاولات: {e}")
+        
+        return []
+
+    async def _call_llm_with_retry(
+        self,
+        prompt: str,
+        model: str,
+    ) -> str:
+        """استدعاء LLM مع إعادة المحاولة."""
+        return await self.llm_manager.generate(
+            prompt=prompt,
+            model=model,
+            temperature=self.config.llm.temperature,
+            max_tokens=self.config.llm.max_tokens,
+        )
+
+    async def _async_sleep(self, seconds: float) -> None:
+        """نوم غير متزامن."""
+        import asyncio
+        await asyncio.sleep(seconds)
+
+    def _build_cot_prompt(self, problem: str, context: Optional[Dict[str, Any]]) -> str:
+        """بناء prompt للـ Chain of Thought."""
+        context_str = json.dumps(context, ensure_ascii=False) if context else ""
+        
+        return f"""قم بتحليل المشكلة التالية خطوة بخطوة:
 
 المشكلة: {problem}
 
@@ -246,12 +573,34 @@ class ReasoningEngine:
 5. تقييم كل خيار
 6. الوصول إلى نتيجة
 
-لكل خطوة، قدّم:
+أرجع JSON:
+{{
+  "steps": [
+    {{
+      "step_number": 1,
+      "description": "...",
+      "reasoning": "...",
+      "conclusion": "...",
+      "confidence": 0.85,
+      "alternatives": ["...", "..."]
+    }}
+  ]
+}}"""
+
+    def _build_tot_prompt(self, problem: str, context: Optional[Dict[str, Any]]) -> str:
+        """بناء prompt للـ Tree of Thought."""
+        context_str = json.dumps(context, ensure_ascii=False) if context else ""
+        
+        return f"""قم بتحليل المشكلة التالية باستخدام شجرة من القرارات:
+
+المشكلة: {problem}
+السياق: {context_str}
+
+لكل عقدة في الشجرة:
 - الوصف
 - الاستدلال
+- القرارات الفرعية
 - الخلاصة
-- درجة الثقة (0-1)
-- البدائل المحتملة
 
 أرجع JSON:
 {{
@@ -262,28 +611,134 @@ class ReasoningEngine:
       "reasoning": "...",
       "conclusion": "...",
       "confidence": 0.85,
-      "alternatives": [...]
-    }},
-    ...
+      "alternatives": ["...", "..."]
+    }}
   ]
 }}"""
-            
-            response = await self.llm_manager.generate(
-                prompt=prompt,
-                model="gpt-4o",  # نموذج قوي للاستدلال
-                temperature=0.5,
-                max_tokens=2000,
-            )
-            
-            # تحليل الاستجابة
+
+    def _build_decomposition_prompt(self, problem: str, context: Optional[Dict[str, Any]]) -> str:
+        """بناء prompt للـ Decomposition."""
+        context_str = json.dumps(context, ensure_ascii=False) if context else ""
+        
+        return f"""قم بتفكيك المشكلة التالية إلى أجزاء صغيرة:
+
+المشكلة: {problem}
+السياق: {context_str}
+
+لكل جزء:
+- رقم الجزء
+- الوصف
+- العلاقة بالأجزاء الأخرى
+- كيفية الحل
+
+أرجع JSON:
+{{
+  "steps": [
+    {{
+      "step_number": 1,
+      "description": "...",
+      "reasoning": "...",
+      "conclusion": "...",
+      "confidence": 0.85,
+      "alternatives": []
+    }}
+  ]
+}}"""
+
+    def _build_first_principles_prompt(self, problem: str, context: Optional[Dict[str, Any]]) -> str:
+        """بناء prompt للمبادئ الأولى."""
+        context_str = json.dumps(context, ensure_ascii=False) if context else ""
+        
+        return f"""قم بتحليل المشكلة من المبادئ الأولى:
+
+المشكلة: {problem}
+السياق: {context_str}
+
+1. ما هي الحقائق الأساسية؟
+2. ما هي الافتراضات؟
+3. كيف نبني الحل من الصفر؟
+
+أرجع JSON:
+{{
+  "steps": [
+    {{
+      "step_number": 1,
+      "description": "...",
+      "reasoning": "...",
+      "conclusion": "...",
+      "confidence": 0.85,
+      "alternatives": []
+    }}
+  ]
+}}"""
+
+    def _build_multi_perspective_prompt(self, problem: str, context: Optional[Dict[str, Any]]) -> str:
+        """بناء prompt لوجهات النظر المتعددة."""
+        context_str = json.dumps(context, ensure_ascii=False) if context else ""
+        
+        return f"""قم بتحليل المشكلة من وجهات نظر متعددة:
+
+المشكلة: {problem}
+السياق: {context_str}
+
+لكل وجهة نظر:
+- المنظور
+- التحليل
+- الخلاصة
+
+أرجع JSON:
+{{
+  "steps": [
+    {{
+      "step_number": 1,
+      "description": "...",
+      "reasoning": "...",
+      "conclusion": "...",
+      "confidence": 0.85,
+      "alternatives": []
+    }}
+  ]
+}}"""
+
+    def _build_analogy_prompt(self, problem: str, context: Optional[Dict[str, Any]]) -> str:
+        """بناء prompt للقياس."""
+        context_str = json.dumps(context, ensure_ascii=False) if context else ""
+        
+        return f"""قم بحل المشكلة بالقياس لمشكلة مشابهة:
+
+المشكلة: {problem}
+السياق: {context_str}
+
+1. ما هي المشكلة المماثلة؟
+2. كيف تم حلها؟
+3. كيف نطبق الحل؟
+
+أرجع JSON:
+{{
+  "steps": [
+    {{
+      "step_number": 1,
+      "description": "...",
+      "reasoning": "...",
+      "conclusion": "...",
+      "confidence": 0.85,
+      "alternatives": []
+    }}
+  ]
+}}"""
+
+    def _parse_steps_response(self, response: str) -> List[ReasoningStep]:
+        """تحليل استجابة خطوات الاستدلال."""
+        try:
             json_start = response.find("{")
             json_end = response.rfind("}") + 1
+            
             if json_start >= 0 and json_end > json_start:
                 data = json.loads(response[json_start:json_end])
                 steps = []
+                
                 for step_data in data.get("steps", []):
                     step = ReasoningStep(
-                        step_id=str(uuid.uuid4()),
                         step_number=step_data.get("step_number", 0),
                         description=step_data.get("description", ""),
                         reasoning=step_data.get("reasoning", ""),
@@ -292,9 +747,10 @@ class ReasoningEngine:
                         alternatives=step_data.get("alternatives", []),
                     )
                     steps.append(step)
+                
                 return steps
-        except Exception as e:
-            logger.warning("reasoning_engine: failed to perform chain-of-thought: %s", e)
+        except json.JSONDecodeError as e:
+            logger.warning("json_parse_failed", error=str(e))
         
         return []
 
@@ -307,14 +763,11 @@ class ReasoningEngine:
         """اكتشاف المعلومات الناقصة."""
         try:
             steps_summary = "\n".join([
-                f"Step {s.step_number}: {s.conclusion}" for s in reasoning_steps
+                f"- {s.step_number}: {s.description}" for s in reasoning_steps
             ])
             
-            prompt = f"""بناءً على التحليل التالي، حدّد المعلومات الناقصة:
+            prompt = f"""بناءً على خطوات الاستدلال التالية:
 
-المشكلة: {problem}
-
-التحليل:
 {steps_summary}
 
 ما هي المعلومات التي نحتاجها لاتخاذ قرار أفضل؟
@@ -322,19 +775,18 @@ class ReasoningEngine:
 أرجع قائمة JSON:
 ["معلومة 1", "معلومة 2", ...]"""
             
-            response = await self.llm_manager.generate(
+            response = await self._call_llm_with_retry(
                 prompt=prompt,
-                model="gpt-4o-mini",
-                temperature=0.3,
-                max_tokens=500,
+                model=self.config.llm.reasoning_model,
             )
             
             json_start = response.find("[")
             json_end = response.rfind("]") + 1
+            
             if json_start >= 0 and json_end > json_start:
                 return json.loads(response[json_start:json_end])
         except Exception as e:
-            logger.warning("reasoning_engine: failed to identify missing information: %s", e)
+            logger.warning("missing_info_failed", error=str(e))
         
         return []
 
@@ -346,16 +798,11 @@ class ReasoningEngine:
     ) -> List[RiskAssessment]:
         """تقييم المخاطر."""
         try:
-            prompt = f"""قيّم المخاطر المحتملة:
+            prompt = f"""قيّم المخاطر المحتملة للمشكلة التالية:
 
 المشكلة: {problem}
 
-قم بـ:
-1. تحديد المخاطر المحتملة (تقنية، تشغيلية، أمنية، إلخ)
-2. تقدير الشدة (low, medium, high, critical)
-3. تقدير الاحتمالية (0-1)
-4. وصف التأثير
-5. اقتراح استراتيجية التخفيف
+الحد الأقصى للمخاطر: {self.config.risk_assessment.max_risks_per_analysis}
 
 أرجع JSON:
 {{
@@ -367,37 +814,50 @@ class ReasoningEngine:
       "probability": 0.5,
       "impact": "...",
       "mitigation_strategy": "..."
-    }},
-    ...
+    }}
   ]
 }}"""
             
-            response = await self.llm_manager.generate(
+            response = await self._call_llm_with_retry(
                 prompt=prompt,
-                model="gpt-4o-mini",
-                temperature=0.3,
-                max_tokens=800,
+                model=self.config.llm.reasoning_model,
             )
             
             json_start = response.find("{")
             json_end = response.rfind("}") + 1
+            
             if json_start >= 0 and json_end > json_start:
                 data = json.loads(response[json_start:json_end])
                 risks = []
+                
                 for risk_data in data.get("risks", []):
+                    severity = risk_data.get("severity", "medium")
+                    if severity not in ("low", "medium", "high", "critical"):
+                        severity = "medium"
+                    
                     risk = RiskAssessment(
-                        risk_id=str(uuid.uuid4()),
                         risk_type=risk_data.get("risk_type", ""),
                         description=risk_data.get("description", ""),
-                        severity=risk_data.get("severity", "medium"),
+                        severity=severity,
                         probability=float(risk_data.get("probability", 0.5)),
                         impact=risk_data.get("impact", ""),
                         mitigation_strategy=risk_data.get("mitigation_strategy", ""),
                     )
                     risks.append(risk)
+                
+                if self.config.risk_assessment.severity_threshold:
+                    threshold_order = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+                    min_level = threshold_order.get(
+                        self.config.risk_assessment.severity_threshold, 1
+                    )
+                    risks = [
+                        r for r in risks
+                        if threshold_order.get(r.severity, 0) >= min_level
+                    ][:self.config.risk_assessment.max_risks_per_analysis]
+                
                 return risks
         except Exception as e:
-            logger.warning("reasoning_engine: failed to assess risks: %s", e)
+            logger.warning("risk_assessment_failed", error=str(e))
         
         return []
 
@@ -412,24 +872,23 @@ class ReasoningEngine:
         try:
             risks_summary = "\n".join([
                 f"- {r.risk_type}: {r.description}" for r in risks
-            ])
+            ]) or "لا توجد مخاطر محددة"
             
-            prompt = f"""اقترح حلولاً للمشكلة:
+            prompt = f"""اقترح حلولاً للمشكلة التالية:
 
 المشكلة: {problem}
 
 المخاطر المحتملة:
 {risks_summary}
 
+الحد الأقصى للحلول: {self.config.solution.max_solutions}
+
 لكل حل، قدّم:
-1. العنوان
-2. الوصف
-3. الإيجابيات (3-5)
-4. السلبيات (2-4)
-5. تقدير الجهد (low, medium, high)
-6. تقدير الوقت
-7. مستوى المخاطرة
-8. درجة الجدوى (0-1)
+- العنوان والوصف
+- الإيجابيات ({self.config.solution.min_pros}-{self.config.solution.max_pros})
+- السلبيات ({self.config.solution.min_cons}-{self.config.solution.max_cons})
+- تقدير الجهد والوقت
+- درجة الجدوى (0-1)
 
 أرجع JSON:
 {{
@@ -437,46 +896,52 @@ class ReasoningEngine:
     {{
       "title": "...",
       "description": "...",
-      "pros": [...],
-      "cons": [...],
+      "pros": ["..."],
+      "cons": ["..."],
       "effort_estimate": "...",
       "time_estimate": "...",
       "risk_level": "...",
       "feasibility_score": 0.8
-    }},
-    ...
+    }}
   ]
 }}"""
             
-            response = await self.llm_manager.generate(
+            response = await self._call_llm_with_retry(
                 prompt=prompt,
-                model="gpt-4o",
-                temperature=0.5,
-                max_tokens=1500,
+                model=self.config.llm.primary_model,
             )
             
             json_start = response.find("{")
             json_end = response.rfind("}") + 1
+            
             if json_start >= 0 and json_end > json_start:
                 data = json.loads(response[json_start:json_end])
                 solutions = []
+                
                 for sol_data in data.get("solutions", []):
                     solution = SolutionOption(
-                        option_id=str(uuid.uuid4()),
                         title=sol_data.get("title", ""),
                         description=sol_data.get("description", ""),
-                        pros=sol_data.get("pros", []),
-                        cons=sol_data.get("cons", []),
+                        pros=sol_data.get("pros", [])[:self.config.solution.max_pros],
+                        cons=sol_data.get("cons", [])[:self.config.solution.max_cons],
                         effort_estimate=sol_data.get("effort_estimate", "medium"),
                         time_estimate=sol_data.get("time_estimate", ""),
                         risk_level=sol_data.get("risk_level", "medium"),
                         feasibility_score=float(sol_data.get("feasibility_score", 0.5)),
-                        recommended=False,
                     )
                     solutions.append(solution)
-                return solutions
+                
+                while len(solutions) < self.config.solution.min_solutions:
+                    solutions.append(SolutionOption(
+                        title=f"حل بديل {len(solutions) + 1}",
+                        description="حل بديل يحتاج مزيداً من التحليل",
+                        pros=["مرونة"],
+                        cons=["غير مكتمل"],
+                    ))
+                
+                return solutions[:self.config.solution.max_solutions]
         except Exception as e:
-            logger.warning("reasoning_engine: failed to propose solutions: %s", e)
+            logger.warning("solution_proposal_failed", error=str(e))
         
         return []
 
@@ -488,7 +953,6 @@ class ReasoningEngine:
         if not solutions:
             return None
         
-        # اختيار الحل بأعلى درجة جدوى
         best = max(solutions, key=lambda s: s.feasibility_score)
         best.recommended = True
         return best
@@ -502,23 +966,30 @@ class ReasoningEngine:
         recommended: Optional[SolutionOption],
     ) -> str:
         """بناء ملخص الاستدلال."""
-        summary = f"تم إجراء {len(reasoning_steps)} خطوات استدلال. "
+        summary_parts = []
+        
+        if reasoning_steps:
+            summary_parts.append(f"تم إجراء {len(reasoning_steps)} خطوات استدلال.")
         
         if missing_info:
-            summary += f"معلومات ناقصة: {', '.join(missing_info[:2])}. "
+            summary_parts.append(f"معلومات ناقصة: {', '.join(missing_info[:2])}.")
         
         if risks:
-            critical_risks = [r for r in risks if r.severity == "critical"]
-            if critical_risks:
-                summary += f"مخاطر حرجة: {len(critical_risks)}. "
+            critical = [r for r in risks if r.severity == "critical"]
+            high = [r for r in risks if r.severity == "high"]
+            
+            if critical:
+                summary_parts.append(f"مخاطر حرجة: {len(critical)}.")
+            elif high:
+                summary_parts.append(f"مخاطر عالية: {len(high)}.")
         
         if solutions:
-            summary += f"تم اقتراح {len(solutions)} حل. "
+            summary_parts.append(f"تم اقتراح {len(solutions)} حل.")
         
         if recommended:
-            summary += f"الحل الموصى به: {recommended.title}."
+            summary_parts.append(f"الحل الموصى به: {recommended.title}.")
         
-        return summary
+        return " ".join(summary_parts) if summary_parts else "تم إكمال الاستدلال."
 
     def _calculate_overall_confidence(
         self,
@@ -528,7 +999,7 @@ class ReasoningEngine:
     ) -> float:
         """حساب درجة الثقة الكلية."""
         if not reasoning_steps:
-            return 0.3
+            return self.config.error_recovery.fallback_confidence
         
         steps_confidence = sum(s.confidence for s in reasoning_steps) / len(reasoning_steps)
         
@@ -547,17 +1018,66 @@ class ReasoningEngine:
         results.sort(key=lambda r: r.created_at, reverse=True)
         return [r.to_dict() for r in results[:limit]]
 
+    def get_metrics_summary(self) -> Dict[str, Any]:
+        """الحصول على ملخص المقاييس."""
+        return self.metrics.get_summary()
 
-# Singleton
+    def get_trace_statistics(self) -> Dict[str, Any]:
+        """الحصول على إحصائيات التتبع."""
+        return self.trace_manager.get_statistics()
+
+    def clear_cache(self) -> int:
+        """مسح التخزين المؤقت."""
+        count = len(self._reasoning_cache)
+        self._reasoning_cache.clear()
+        logger.info("cache_cleared", entries_removed=count)
+        return count
+
+
 _reasoning_engine: Optional[ReasoningEngine] = None
 
 
-def get_reasoning_engine(llm_manager: Optional[LLMManager] = None) -> ReasoningEngine:
-    """الحصول على instance من ReasoningEngine."""
+def get_reasoning_engine(
+    llm_manager: Optional[LLMManager] = None,
+    config: Optional[ReasoningEngineConfig] = None,
+) -> ReasoningEngine:
+    """
+    الحصول على instance من ReasoningEngine.
+    
+    يستخدم singleton pattern للتأكد من وجود instance واحد فقط.
+    """
     global _reasoning_engine
+    
     if _reasoning_engine is None:
         if llm_manager is None:
             from hajeen_platform.core.llm import get_llm_manager
             llm_manager = get_llm_manager()
-        _reasoning_engine = ReasoningEngine(llm_manager)
+        
+        _reasoning_engine = ReasoningEngine(
+            llm_manager=llm_manager,
+            config=config,
+        )
+    
     return _reasoning_engine
+
+
+def reset_reasoning_engine() -> None:
+    """إعادة تعيين محرك الاستدلال."""
+    global _reasoning_engine
+    _reasoning_engine = None
+    logger.info("reasoning_engine_reset")
+
+
+def create_reasoning_engine(
+    llm_manager: LLMManager,
+    config: Optional[ReasoningEngineConfig] = None,
+) -> ReasoningEngine:
+    """
+    إنشاء محرك استدلال جديد.
+    
+    لا يستخدم singleton pattern - يُنشئ instance جديد في كل مرة.
+    """
+    return ReasoningEngine(
+        llm_manager=llm_manager,
+        config=config,
+    )
