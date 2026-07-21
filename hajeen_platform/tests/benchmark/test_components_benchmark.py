@@ -121,28 +121,30 @@ class TestContinuousLearningBenchmark:
 class TestDecisionEngineBenchmark:
     ITERATIONS = 20
 
-    def test_quality_lookup_speed(self, tmp_path):
-        """يقيس سرعة البحث عن جودة النموذج."""
-        try:
-            from hajeen_platform.brain.decision_engine_v3 import DecisionEngineV3
-        except ImportError:
-            pytest.skip("DecisionEngineV3 not available")
+    def test_decision_speed(self, tmp_path):
+        """يقيس سرعة اتخاذ القرار."""
+        from hajeen_platform.brain.decision_engine import DecisionEngineV2, DecisionContext, DecisionType
 
-        engine = DecisionEngineV3()
-        models = ["openai/gpt-4o", "qwen2.5-7b", "ollama/llama3", "unknown/model"]
-
+        engine = DecisionEngineV2()
+        
         loop = asyncio.new_event_loop()
         latencies = []
         for _ in range(self.ITERATIONS):
-            for model in models:
-                t0 = time.perf_counter()
-                loop.run_until_complete(engine._get_model_quality(model))
-                latencies.append((time.perf_counter() - t0) * 1000)
+            context = DecisionContext(
+                request_id=f"bench-{_}",
+                user_message="اختبار الأداء",
+                session_id="bench",
+                task_count=5,
+                available_models=["gpt-4o", "claude-3", "gemini"],
+            )
+            t0 = time.perf_counter()
+            loop.run_until_complete(engine.decide(context, DecisionType.MODEL_SELECTION))
+            latencies.append((time.perf_counter() - t0) * 1000)
         loop.close()
 
         avg_ms = statistics.mean(latencies)
-        print(f"\n[ModelQuality] avg={avg_ms:.2f}ms over {len(latencies)} lookups")
-        assert avg_ms < 100, f"البحث بطيء: {avg_ms:.2f}ms"
+        print(f"\n[DecisionEngineV2] avg={avg_ms:.2f}ms over {len(latencies)} decisions")
+        assert avg_ms < 100, f"اتخاذ القرار بطيء: {avg_ms:.2f}ms"
 
 
 if __name__ == "__main__":

@@ -22,7 +22,7 @@ from .production_infra import CircuitBreaker, RateLimiter, SmartCache
 from .autonomous_planner import (
     AutonomousPlanningEngine, PlanningMode, HierarchicalPlanner, RecursivePlanner
 )
-from .decision_engine_v3 import ResourceType, ResourceAllocation, RetryStrategy
+from .decision_engine import ResourceType, ResourceAllocation, RetryStrategy
 
 logger = logging.getLogger(__name__)
 

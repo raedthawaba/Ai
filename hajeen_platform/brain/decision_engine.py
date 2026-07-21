@@ -72,6 +72,39 @@ def _trace(component: str, action: str):
 
 
 # ============================================================
+# LEGACY TYPES (for compatibility with Planning Engine)
+# ============================================================
+
+class ResourceType(str, Enum):
+    """Types of resources for planning"""
+    LOCAL_MODEL = "local_model"
+    CLOUD_MODEL = "cloud_model"
+    RAG = "rag"
+    WEB_SEARCH = "web_search"
+    TOOL = "tool"
+    MULTI_MODEL = "multi_model"
+    CACHE = "cache"
+
+
+@dataclass
+class ResourceAllocation:
+    """Resource allocation for tasks"""
+    resource_type: ResourceType
+    model: str
+    estimated_tokens: int
+    estimated_cost: float
+    priority: int = 5
+
+
+class RetryStrategy(str, Enum):
+    """Retry strategies"""
+    NONE = "none"
+    EXPONENTIAL = "exponential"
+    LINEAR = "linear"
+    FIBONACCI = "fibonacci"
+
+
+# ============================================================
 # PHASE 1: Foundation & Core Decision Architecture
 # ============================================================
 
