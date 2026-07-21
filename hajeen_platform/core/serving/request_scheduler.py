@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Any, Dict, List, Optional
 
-from core.serving.batching_engine import BatchingEngine, PendingRequest
+from .serving.batching_engine import BatchingEngine, PendingRequest
 
 logger = logging.getLogger(__name__)
 

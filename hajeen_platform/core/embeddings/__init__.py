@@ -1,6 +1,6 @@
-from core.embeddings.base import BaseEmbeddingModel, EmbeddingResult, EmbeddingConfig
-from core.embeddings.embedding_registry import EmbeddingRegistry
-from core.embeddings.embedding_manager import EmbeddingManager, get_embedding_manager
+from .base import BaseEmbeddingModel, EmbeddingResult, EmbeddingConfig
+from .embedding_registry import EmbeddingRegistry
+from .embedding_manager import EmbeddingManager, get_embedding_manager
 from .embedding_engine import EmbeddingEngine
 from .embedding_models import EmbeddingModelLoader
 from .embedding_cache import EmbeddingCache

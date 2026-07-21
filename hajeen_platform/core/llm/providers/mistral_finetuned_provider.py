@@ -18,7 +18,7 @@ import os
 import time
 from typing import AsyncIterator, Dict, List, Optional
 
-from core.llm.base import BaseLLMProvider, LLMConfig, LLMMessage, LLMResponse
+from .llm.base import BaseLLMProvider, LLMConfig, LLMMessage, LLMResponse
 
 logger = logging.getLogger(__name__)
 

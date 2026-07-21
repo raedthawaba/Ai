@@ -17,11 +17,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from core.serving.batching_engine import BatchingEngine
-from core.serving.load_balancer import LoadBalancer
-from core.serving.model_pool import ModelPool
-from core.serving.request_scheduler import RequestScheduler
-from core.serving.streaming_server import StreamingServer
+from .serving.batching_engine import BatchingEngine
+from .serving.load_balancer import LoadBalancer
+from .serving.model_pool import ModelPool
+from .serving.request_scheduler import RequestScheduler
+from .serving.streaming_server import StreamingServer
 
 logger = logging.getLogger(__name__)
 

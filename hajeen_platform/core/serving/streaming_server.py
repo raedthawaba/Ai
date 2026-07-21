@@ -11,7 +11,7 @@ import time
 import uuid
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
-from core.serving.model_pool import ModelPool
+from .serving.model_pool import ModelPool
 
 logger = logging.getLogger(__name__)
 

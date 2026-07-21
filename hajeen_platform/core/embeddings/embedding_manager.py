@@ -6,8 +6,8 @@ import logging
 import time
 from typing import Dict, List, Optional
 
-from core.embeddings.base import BaseEmbeddingModel, EmbeddingConfig, EmbeddingResult
-from core.embeddings.embedding_registry import EmbeddingRegistry
+from .base import BaseEmbeddingModel, EmbeddingConfig, EmbeddingResult
+from .embedding_registry import EmbeddingRegistry
 
 logger = logging.getLogger(__name__)
 

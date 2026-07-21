@@ -21,17 +21,17 @@ from typing import Any, Dict, List, Optional, Union
 import structlog
 from pydantic import BaseModel, Field
 
-from brain.config import (
+from ..config import (
     ReasoningEngineConfig,
     ReasoningStrategyType,
     get_default_config,
 )
-from brain.execution_trace import (
+from ..execution_trace import (
     ExecutionTrace,
     ExecutionTraceManager,
     TraceLevel,
 )
-from brain.metrics_engine import MetricsCollector, get_metrics_collector
+from ..metrics_engine import MetricsCollector, get_metrics_collector
 from hajeen_platform.core.llm import LLMManager
 
 logger = structlog.get_logger(__name__)

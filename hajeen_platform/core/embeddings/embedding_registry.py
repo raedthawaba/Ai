@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Dict, Optional, Type
 
-from core.embeddings.base import BaseEmbeddingModel, EmbeddingConfig
+from .base import BaseEmbeddingModel, EmbeddingConfig
 
 logger = logging.getLogger(__name__)
 

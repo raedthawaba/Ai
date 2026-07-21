@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
-from core.llm.base import LLMStreamChunk
+from .llm.base import LLMStreamChunk
 
 logger = logging.getLogger(__name__)
 

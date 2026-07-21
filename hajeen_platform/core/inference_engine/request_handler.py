@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from core.llm.base import LLMMessage, LLMRequest
+from .llm.base import LLMMessage, LLMRequest
 
 
 class JobStatus(str, Enum):

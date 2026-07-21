@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from core.llm.base import LLMResponse
+from .llm.base import LLMResponse
 
 
 @dataclass
