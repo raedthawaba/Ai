@@ -703,7 +703,7 @@ class EvidenceCourt:
     def _calculate_decision_impact(self, valid_evidence: List[EvidenceEvaluationResult]) -> float:
         """Calculate overall decision impact from valid evidence."""
         if not valid_evidence:
-            return 0.0
+            return 0.1  # Default minimum impact for having evidence
         
         # Weighted by rank (top evidence has more impact)
         total_impact = 0.0
@@ -711,14 +711,17 @@ class EvidenceCourt:
         
         for i, evidence in enumerate(valid_evidence[:5]):
             weight = rank_weights[i] if i < len(rank_weights) else 0.1
-            total_impact += evidence.confidence * weight * evidence.relevance_score
+            # Use confidence as base, with relevance as a boost (minimum 0.1)
+            relevance = max(0.1, evidence.relevance_score)
+            total_impact += evidence.confidence * weight * relevance
         
         # Normalize
         max_possible = sum(rank_weights[:min(len(valid_evidence), 5)])
         if max_possible > 0:
             total_impact /= max_possible
         
-        return min(1.0, max(0.0, total_impact))
+        # Ensure minimum impact of 0.1 for valid evidence
+        return min(1.0, max(0.1, total_impact))
     
     def _generate_final_result(
         self,
