@@ -60,6 +60,12 @@ from .knowledge.knowledge_graph import (
     RelationType,
     get_knowledge_graph,
 )
+
+# Phase 7, 8, 9: Evidence, Hypothesis, World Model
+from .cognitive_layer.evidence_court import EvidenceCourt, get_evidence_court
+from .cognitive_layer.hypothesis_engine import HypothesisEngine, get_hypothesis_engine
+from .cognitive_layer.world_model import WorldModel, get_world_model
+
 from .memory.memory_fabric import MemoryFabric, get_memory_fabric
 from .metrics.model_performance_db import ModelPerformanceDB, get_performance_db
 from .model_router import ModelRouter, get_model_router
@@ -309,6 +315,15 @@ class HajeenBrainV3:
         # ── Phase 20: Cognitive Evolution ─────────────────────────────
         self.cognitive_evolution: CognitiveEvolutionEngine = get_cognitive_evolution_engine()
         
+        # ── Phase 7: Evidence Court ────────────────────────────────────
+        self.evidence_court: EvidenceCourt = get_evidence_court()
+        
+        # ── Phase 8: Hypothesis Engine ────────────────────────────────
+        self.hypothesis_engine: HypothesisEngine = get_hypothesis_engine()
+        
+        # ── Phase 9: World Model ──────────────────────────────────────
+        self.world_model: WorldModel = get_world_model()
+        
         # تحديث Decision Engine
         self.decision_engine._performance_db = self.performance_db
         self.decision_engine._policy_engine = self.policy
@@ -485,6 +500,48 @@ class HajeenBrainV3:
                     "missing_info": reasoning.missing_information,
                     "latency_ms": round((time.perf_counter() - t4) * 1000, 1),
                 }
+            
+            # ── Step 4b: Evidence Court — التحقق من الأدلة ─────────────────
+            t4b = time.perf_counter()
+            evidence_context = {
+                "query": request.user_message,
+                "reasoning_result": reasoning.reasoning_id if hasattr(reasoning, "reasoning_id") else str(reasoning),
+                "domain": ctx_analysis.detected_domain,
+            }
+            evidence_result = await self.evidence_court.evaluate(evidence_context)
+            trace.evidence_check = {
+                "evidence_score": getattr(evidence_result, "evidence_score", 0.0),
+                "confidence": getattr(evidence_result, "confidence", 0.0),
+                "sources": getattr(evidence_result, "sources", []),
+                "latency_ms": round((time.perf_counter() - t4b) * 1000, 1),
+            }
+            
+            # ── Step 4c: Hypothesis Engine — توليد وتقييم الفرضيات ─────────
+            t4c = time.perf_counter()
+            hypothesis_context = {
+                "problem": request.user_message,
+                "reasoning": reasoning.reasoning_steps if hasattr(reasoning, "reasoning_steps") else [],
+                "evidence": evidence_result,
+            }
+            hypothesis_result = await self.hypothesis_engine.generate_hypotheses(hypothesis_context)
+            trace.hypothesis_generation = {
+                "hypotheses_count": len(getattr(hypothesis_result, "hypotheses", [])),
+                "best_hypothesis": getattr(hypothesis_result, "best_hypothesis", {}).get("id") if hasattr(hypothesis_result, "best_hypothesis") else None,
+                "latency_ms": round((time.perf_counter() - t4c) * 1000, 1),
+            }
+            
+            # ── Step 4d: World Model — محاكاة وتوقع ─────────────────────────
+            t4d = time.perf_counter()
+            world_context = {
+                "scenario": request.user_message,
+                "hypothesis": hypothesis_result.best_hypothesis if hasattr(hypothesis_result, "best_hypothesis") else None,
+            }
+            world_result = await self.world_model.simulate(world_context)
+            trace.world_model = {
+                "predictions": len(getattr(world_result, "predictions", [])),
+                "confidence": getattr(world_result, "confidence", 0.0),
+                "latency_ms": round((time.perf_counter() - t4d) * 1000, 1),
+            }
             
             # ── Step 5: Task Decomposer — تفكيك إلى مهام ───────────────────
             t5 = time.perf_counter()
@@ -844,6 +901,21 @@ class HajeenBrainV3:
             # Phase 20: Cognitive Evolution
             "cognitive_evolution": {
                 "capabilities": self.cognitive_evolution.get_capabilities(),
+            },
+            # Phase 7: Evidence Court
+            "evidence_court": {
+                "active": True,
+                "has_methods": hasattr(self.evidence_court, "evaluate"),
+            },
+            # Phase 8: Hypothesis Engine
+            "hypothesis_engine": {
+                "active": True,
+                "has_methods": hasattr(self.hypothesis_engine, "generate_hypotheses"),
+            },
+            # Phase 9: World Model
+            "world_model": {
+                "active": True,
+                "has_methods": hasattr(self.world_model, "simulate"),
             },
             "stats": dict(self._stats),
             "active_requests": len(self._active_requests),
