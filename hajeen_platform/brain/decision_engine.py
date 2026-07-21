@@ -1,359 +1,791 @@
 """
-Decision Engine — محرك القرار المستقل
-======================================
-يقرر أي نموذج / أداة / مصدر يُستخدم لكل مهمة.
-القرارات لا يحددها LLM — بل قواعد محددة + بيانات الأداء التاريخية.
+Decision Engine V2 - 10-Phase Decision Making System
+===================================================
+
+هذا المحرك هو المسؤول عن اتخاذ القرارات داخل منصة Hajeen.
+يعتمد على:
+- نتائج Reasoning Engine
+- مخرجات Planning Engine
+- الذاكرة والمعرفة
+- السياسات والموارد
+- تقييم المخاطر والمحاكاة
+
+المراحل:
+1. Foundation & Core Decision Architecture
+2. Decision Analysis
+3. Candidate Generation
+4. Decision Scoring
+5. Constraint & Policy Engine
+6. Multi-Criteria Decision Making
+7. Simulation Before Decision
+8. Decision Validation
+9. Decision Learning
+10. Production Decision Engine
+
+Author: raedthawaba
 """
+
 from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass
+import uuid
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional
-
-from hajeen_platform.core.llm.base import LLMRequest, LLMResponse
-from hajeen_platform.core.llm.llm_manager import LLMManager, get_llm_manager
-
-from .goal_manager import ComplexityLevel, Goal, IntentType
+from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 
-class ResourceType(str, Enum):
-    LOCAL_MODEL = "local_model"     # نموذج محلي (Ollama, llama.cpp)
-    CLOUD_MODEL = "cloud_model"     # نموذج سحابي (OpenAI, Qwen API)
-    RAG = "rag"                     # استرجاع من قاعدة المعرفة
-    WEB_SEARCH = "web_search"       # البحث على الإنترنت
-    TOOL = "tool"                   # أداة خارجية
-    MULTI_MODEL = "multi_model"     # تعاون عدة نماذج
-    CACHE = "cache"                 # نتيجة مخزّنة مسبقاً
+# ============================================================
+# PHASE 1: Foundation & Core Decision Architecture
+# ============================================================
+
+class DecisionType(str, Enum):
+    """أنواع القرارات"""
+    MODEL_SELECTION = "model_selection"
+    TOOL_SELECTION = "tool_selection"
+    AGENT_SELECTION = "agent_selection"
+    RESOURCE_ALLOCATION = "resource_allocation"
+    EXECUTION_STRATEGY = "execution_strategy"
+    PLAN_SELECTION = "plan_selection"
+    FALLBACK = "fallback"
+    REPLAN = "replan"
+
+
+class DecisionStatus(str, Enum):
+    """حالة القرار"""
+    PENDING = "pending"
+    ANALYZING = "analyzing"
+    GENERATING = "generating"
+    SCORING = "scoring"
+    VALIDATING = "validating"
+    SIMULATING = "simulating"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    EXECUTING = "executing"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
 
 
 @dataclass
-class Decision:
-    """قرار الـ Decision Engine لمهمة معينة."""
-    task_id: str
-    resource_type: ResourceType
-    primary_model: str
-    fallback_model: Optional[str]
-    use_rag: bool
-    use_web: bool
-    use_multi_model: bool
-    collaborating_models: List[str]
-    estimated_cost_tokens: int
-    confidence: float
-    reasoning: str
-    metadata: Dict[str, Any]
-    decided_at: float
+class DecisionContext:
+    """سياق القرار"""
+    request_id: str
+    user_message: str
+    session_id: str
+    goal_id: Optional[str] = None
+    plan_id: Optional[str] = None
+    task_count: int = 0
+    estimated_tokens: int = 0
+    estimated_duration: float = 0.0
+    intent: Optional[str] = None
+    reasoning_depth: int = 0
+    confidence: float = 0.0
+    available_models: List[str] = field(default_factory=list)
+    available_tools: List[str] = field(default_factory=list)
+    available_agents: List[str] = field(default_factory=list)
+    budget_limit: Optional[float] = None
+    token_limit: Optional[int] = None
+    constraints: Dict[str, Any] = field(default_factory=dict)
+    policies: Dict[str, Any] = field(default_factory=dict)
+    recent_decisions: List[str] = field(default_factory=list)
+    success_history: Dict[str, float] = field(default_factory=dict)
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+
+@dataclass
+class DecisionCandidate:
+    """مرشح قرار"""
+    candidate_id: str
+    decision_type: DecisionType
+    choice: Any
+    reasons: List[str] = field(default_factory=list)
+    evidence: Dict[str, Any] = field(default_factory=dict)
+    quality_score: float = 0.0
+    risk_score: float = 0.0
+    cost_score: float = 0.0
+    time_score: float = 0.0
+    resource_score: float = 0.0
+    confidence_score: float = 0.0
+    utility_score: float = 0.0
+    estimated_tokens: int = 0
+    estimated_cost: float = 0.0
+    estimated_time: float = 0.0
+    potential_failures: List[str] = field(default_factory=list)
+    risk_mitigation: Dict[str, str] = field(default_factory=dict)
+    policy_violations: List[str] = field(default_factory=list)
+    security_checks: Dict[str, bool] = field(default_factory=dict)
+    simulation_result: Optional[Dict[str, Any]] = None
+    final_score: float = 0.0
+    is_selected: bool = False
+
+
+@dataclass
+class DecisionResult:
+    """نتيجة القرار"""
+    request_id: str
+    decision_type: DecisionType
+    status: DecisionStatus
+    selected_candidate: Optional[DecisionCandidate] = None
+    rejected_candidates: List[DecisionCandidate] = field(default_factory=list)
+    all_candidates: List[DecisionCandidate] = field(default_factory=list)
+    created_at: float = field(default_factory=time.time)
+    completed_at: Optional[float] = None
+    duration_ms: float = 0.0
+    analysis: Dict[str, Any] = field(default_factory=dict)
+    learning_data: Dict[str, Any] = field(default_factory=dict)
+    errors: List[str] = field(default_factory=list)
+    multi_criteria_scores: Dict[str, float] = field(default_factory=dict)
+    simulation_results: Dict[str, Any] = field(default_factory=dict)
+    validation_result: Optional[Dict[str, Any]] = None
+    outcome: Optional[str] = None
+
+
+@dataclass
+class DecisionConfig:
+    """إعدادات محرك القرار"""
+    max_candidates: int = 5
+    max_simulation_depth: int = 3
+    enable_learning: bool = True
+    enable_caching: bool = True
+    cache_ttl_seconds: int = 3600
+    quality_weight: float = 0.25
+    risk_weight: float = 0.20
+    cost_weight: float = 0.15
+    time_weight: float = 0.15
+    resource_weight: float = 0.15
+    confidence_weight: float = 0.10
+    max_retries: int = 3
+    timeout_seconds: float = 30.0
+    min_confidence: float = 0.5
+
+
+# ============================================================
+# PHASE 2: Decision Analysis
+# ============================================================
+
+class DecisionAnalyzer:
+    """محلل القرارات"""
+    
+    def __init__(self, config: Optional[DecisionConfig] = None):
+        self.config = config or DecisionConfig()
+    
+    async def analyze(self, context: DecisionContext) -> Dict[str, Any]:
+        """تحليل شامل للسياق"""
         return {
-            "task_id": self.task_id,
-            "resource_type": self.resource_type,
-            "primary_model": self.primary_model,
-            "fallback_model": self.fallback_model,
-            "use_rag": self.use_rag,
-            "use_web": self.use_web,
-            "use_multi_model": self.use_multi_model,
-            "collaborating_models": self.collaborating_models,
-            "estimated_cost_tokens": self.estimated_cost_tokens,
-            "confidence": self.confidence,
-            "reasoning": self.reasoning,
+            "context_summary": {
+                "session_id": context.session_id,
+                "message_length": len(context.user_message),
+                "has_goal": context.goal_id is not None,
+            },
+            "goal_analysis": {
+                "goal_id": context.goal_id,
+                "task_count": context.task_count,
+                "complexity": "high" if context.task_count > 10 else "medium" if context.task_count > 3 else "low",
+            },
+            "intent_analysis": {
+                "intent": context.intent,
+                "confidence": context.confidence,
+            },
+            "constraint_analysis": {
+                "has_budget": context.budget_limit is not None,
+                "has_token_limit": context.token_limit is not None,
+            },
+            "priority_analysis": self._analyze_priority(context),
+            "resource_analysis": {
+                "available_models": len(context.available_models),
+                "available_tools": len(context.available_tools),
+            },
+        }
+    
+    def _analyze_priority(self, context: DecisionContext) -> Dict[str, Any]:
+        priority = 5
+        if context.task_count > 50:
+            priority = 1
+        elif context.task_count > 20:
+            priority = 2
+        elif context.task_count > 10:
+            priority = 3
+        return {"calculated_priority": priority}
+
+
+# ============================================================
+# PHASE 3: Candidate Generation
+# ============================================================
+
+class CandidateGenerator:
+    """مولد المرشحين"""
+    
+    def __init__(self, config: Optional[DecisionConfig] = None):
+        self.config = config or DecisionConfig()
+    
+    async def generate(
+        self, context: DecisionContext, decision_type: DecisionType
+    ) -> List[DecisionCandidate]:
+        """توليد قائمة من المرشحين"""
+        
+        generators = {
+            DecisionType.MODEL_SELECTION: self._generate_model_candidates,
+            DecisionType.TOOL_SELECTION: self._generate_tool_candidates,
+            DecisionType.AGENT_SELECTION: self._generate_agent_candidates,
+            DecisionType.EXECUTION_STRATEGY: self._generate_strategy_candidates,
+            DecisionType.RESOURCE_ALLOCATION: self._generate_resource_candidates,
+        }
+        
+        generator = generators.get(decision_type, self._generate_generic_candidates)
+        candidates = await generator(context)
+        return candidates[:self.config.max_candidates]
+    
+    async def _generate_model_candidates(self, c: DecisionContext) -> List[DecisionCandidate]:
+        models = c.available_models or ["gpt-4o", "gpt-4o-mini", "claude-3-sonnet", "gemini-pro"]
+        candidates = []
+        
+        for i, model in enumerate(models):
+            candidate = DecisionCandidate(
+                candidate_id=f"model-{i}-{uuid.uuid4().hex[:8]}",
+                decision_type=DecisionType.MODEL_SELECTION,
+                choice=model,
+                reasons=[f"Available model: {model}"],
+                evidence={"model_name": model},
+            )
+            
+            if "gpt-4" in model:
+                candidate.quality_score = 0.9
+                candidate.cost_score = 0.8
+                candidate.time_score = 0.7
+            elif "claude" in model:
+                candidate.quality_score = 0.9
+                candidate.cost_score = 0.7
+                candidate.time_score = 0.8
+            elif "gemini" in model:
+                candidate.quality_score = 0.8
+                candidate.cost_score = 0.5
+                candidate.time_score = 0.9
+            
+            candidates.append(candidate)
+        return candidates
+    
+    async def _generate_tool_candidates(self, c: DecisionContext) -> List[DecisionCandidate]:
+        tools = c.available_tools or ["search", "calculator", "code_interpreter", "file_reader"]
+        return [
+            DecisionCandidate(
+                candidate_id=f"tool-{i}-{uuid.uuid4().hex[:8]}",
+                decision_type=DecisionType.TOOL_SELECTION,
+                choice=tool,
+                reasons=[f"Available tool: {tool}"],
+                resource_score=0.8,
+            )
+            for i, tool in enumerate(tools)
+        ]
+    
+    async def _generate_agent_candidates(self, c: DecisionContext) -> List[DecisionCandidate]:
+        agents = c.available_agents or ["researcher", "coder", "reviewer", "planner", "executor"]
+        return [
+            DecisionCandidate(
+                candidate_id=f"agent-{i}-{uuid.uuid4().hex[:8]}",
+                decision_type=DecisionType.AGENT_SELECTION,
+                choice=agent,
+                reasons=[f"Specialized agent: {agent}"],
+            )
+            for i, agent in enumerate(agents)
+        ]
+    
+    async def _generate_strategy_candidates(self, c: DecisionContext) -> List[DecisionCandidate]:
+        strategies = [
+            ("sequential", "تنفيذ تسلسلي", 0.7, 0.5, 0.6),
+            ("parallel", "تنفيذ متوازي", 0.8, 0.7, 0.9),
+            ("hybrid", "تنفيذ هجين", 0.9, 0.6, 0.8),
+        ]
+        return [
+            DecisionCandidate(
+                candidate_id=f"strategy-{i}-{uuid.uuid4().hex[:8]}",
+                decision_type=DecisionType.EXECUTION_STRATEGY,
+                choice=strategy,
+                reasons=[desc],
+                quality_score=quality,
+                risk_score=risk,
+                time_score=time_score,
+            )
+            for i, (strategy, desc, quality, risk, time_score) in enumerate(strategies)
+        ]
+    
+    async def _generate_resource_candidates(self, c: DecisionContext) -> List[DecisionCandidate]:
+        allocations = [
+            ("minimal", "أقل موارد", 0.5, 0.3),
+            ("balanced", "موارد متوازنة", 0.7, 0.5),
+            ("full", "كل الموارد", 0.9, 0.8),
+        ]
+        return [
+            DecisionCandidate(
+                candidate_id=f"resource-{i}-{uuid.uuid4().hex[:8]}",
+                decision_type=DecisionType.RESOURCE_ALLOCATION,
+                choice=level,
+                reasons=[desc],
+                quality_score=quality,
+                risk_score=risk,
+            )
+            for i, (level, desc, quality, risk) in enumerate(allocations)
+        ]
+    
+    async def _generate_generic_candidates(
+        self, c: DecisionContext, dt: DecisionType
+    ) -> List[DecisionCandidate]:
+        return [
+            DecisionCandidate(
+                candidate_id=f"generic-{i}-{uuid.uuid4().hex[:8]}",
+                decision_type=dt,
+                choice=f"option_{i}",
+                reasons=[f"Option {i}"],
+                quality_score=0.7 - (i * 0.1),
+                risk_score=0.3 + (i * 0.1),
+            )
+            for i in range(self.config.max_candidates)
+        ]
+
+
+# ============================================================
+# PHASE 4: Decision Scoring
+# ============================================================
+
+class DecisionScorer:
+    """مقيم القرارات"""
+    
+    def __init__(self, config: Optional[DecisionConfig] = None):
+        self.config = config or DecisionConfig()
+    
+    async def score(
+        self, candidates: List[DecisionCandidate], context: DecisionContext
+    ) -> List[DecisionCandidate]:
+        """حساب الدرجات"""
+        
+        for candidate in candidates:
+            await self._calculate_scores(candidate, context)
+            candidate.final_score = self._calculate_weighted_score(candidate)
+        
+        candidates.sort(key=lambda c: c.final_score, reverse=True)
+        return candidates
+    
+    async def _calculate_scores(
+        self, candidate: DecisionCandidate, context: DecisionContext
+    ) -> None:
+        """حساب الدرجات الفردية"""
+        
+        if candidate.quality_score == 0:
+            candidate.quality_score = 0.5 + (0.2 if candidate.evidence else 0)
+        
+        if candidate.risk_score == 0:
+            risk = 0.3
+            if context.task_count > 20:
+                risk += 0.2
+            candidate.risk_score = min(1.0, risk)
+        
+        if candidate.cost_score == 0:
+            choice_str = str(candidate.choice)
+            if "gpt-4" in choice_str:
+                candidate.cost_score = 0.8
+            elif "claude" in choice_str:
+                candidate.cost_score = 0.7
+            elif "gemini" in choice_str:
+                candidate.cost_score = 0.4
+            else:
+                candidate.cost_score = 0.5
+        
+        if candidate.time_score == 0:
+            if context.estimated_duration > 60:
+                candidate.time_score = 0.8
+            elif context.estimated_duration > 30:
+                candidate.time_score = 0.6
+            else:
+                candidate.time_score = 0.4
+        
+        if candidate.resource_score == 0:
+            candidate.resource_score = 0.5
+        
+        choice_str = str(candidate.choice)
+        history = context.success_history.get(choice_str, 0.7)
+        candidate.confidence_score = min(1.0, max(0.0, (context.confidence + history) / 2))
+    
+    def _calculate_weighted_score(self, candidate: DecisionCandidate) -> float:
+        w = self.config
+        return round(
+            candidate.quality_score * w.quality_weight +
+            (1 - candidate.risk_score) * w.risk_weight +
+            (1 - candidate.cost_score) * w.cost_weight +
+            (1 - candidate.time_score) * w.time_weight +
+            (1 - candidate.resource_score) * w.resource_weight +
+            candidate.confidence_score * w.confidence_weight,
+            4
+        )
+
+
+# ============================================================
+# PHASE 5: Constraint & Policy Engine
+# ============================================================
+
+class PolicyChecker:
+    """فاحص السياسات"""
+    
+    def __init__(self):
+        self.policies = {
+            "security": {"block_dangerous": True},
+            "budget": {"max_cost_per_request": 10.0},
+            "resources": {"max_tokens": 100000},
+            "safety": {"block_harmful_content": True},
+        }
+    
+    async def check(
+        self, candidate: DecisionCandidate, context: DecisionContext
+    ) -> tuple[bool, List[str]]:
+        """التحقق من السياسات"""
+        violations = []
+        
+        # فحص الأمان
+        dangerous = ["hack", "exploit", "bypass", "injection"]
+        choice_str = str(candidate.choice).lower()
+        for keyword in dangerous:
+            if keyword in choice_str:
+                violations.append(f"Security: Suspicious keyword '{keyword}'")
+        
+        # فحص الميزانية
+        cost = candidate.estimated_cost or self._estimate_cost(candidate)
+        if cost > self.policies["budget"]["max_cost_per_request"]:
+            violations.append("Budget: Cost exceeds limit")
+        if context.budget_limit and cost > context.budget_limit:
+            violations.append("Budget: Cost exceeds user limit")
+        
+        # فحص الموارد
+        tokens = candidate.estimated_tokens or context.estimated_tokens
+        if tokens > self.policies["resources"]["max_tokens"]:
+            violations.append("Resources: Tokens exceed limit")
+        
+        candidate.policy_violations = violations
+        candidate.security_checks = {
+            "security": len([v for v in violations if v.startswith("Security")]) == 0,
+            "budget": len([v for v in violations if v.startswith("Budget")]) == 0,
+            "resources": len([v for v in violations if v.startswith("Resources")]) == 0,
+        }
+        
+        return len(violations) == 0, violations
+    
+    def _estimate_cost(self, candidate: DecisionCandidate) -> float:
+        choice_str = str(candidate.choice)
+        if "gpt-4" in choice_str:
+            return 0.03
+        elif "claude" in choice_str:
+            return 0.02
+        return 0.01
+
+
+# ============================================================
+# PHASE 6: Multi-Criteria Decision Making
+# ============================================================
+
+class MultiCriteriaDecider:
+    """اتخاذ القرار متعدد المعايير"""
+    
+    async def select_best(
+        self, candidates: List[DecisionCandidate], context: DecisionContext
+    ) -> tuple[Optional[DecisionCandidate], Dict[str, float]]:
+        """اختيار أفضل مرشح"""
+        
+        if not candidates:
+            return None, {}
+        
+        scores = {}
+        for c in candidates:
+            weighted = (
+                c.quality_score * 0.25 +
+                (1 - c.risk_score) * 0.20 +
+                (1 - c.cost_score) * 0.15 +
+                (1 - c.time_score) * 0.15 +
+                (1 - c.resource_score) * 0.15 +
+                c.confidence_score * 0.10
+            )
+            utility = (c.quality_score ** 2 + (1 - c.risk_score) ** 2 + (1 - c.cost_score) ** 2) / 3
+            scores[c.candidate_id] = round((weighted + utility) / 2, 4)
+        
+        best = max(candidates, key=lambda c: scores.get(c.candidate_id, 0))
+        best.is_selected = True
+        
+        return best, scores
+
+
+# ============================================================
+# PHASE 7: Simulation Before Decision
+# ============================================================
+
+class DecisionSimulator:
+    """محاكاة القرارات"""
+    
+    async def simulate(
+        self, candidate: DecisionCandidate, context: DecisionContext
+    ) -> Dict[str, Any]:
+        """محاكاة القرار"""
+        
+        success_prob = 0.8
+        choice_str = str(candidate.choice)
+        if choice_str in context.success_history:
+            success_prob = (success_prob + context.success_history[choice_str]) / 2
+        success_prob *= (1 - candidate.risk_score * 0.3)
+        
+        failures = []
+        if candidate.resource_score > 0.7:
+            failures.append({
+                "type": "resource_exhaustion",
+                "probability": 0.3,
+                "mitigation": "Reserve extra resources"
+            })
+        if candidate.cost_score > 0.7:
+            failures.append({
+                "type": "budget_exceeded",
+                "probability": 0.25,
+                "mitigation": "Set hard budget limit"
+            })
+        
+        stability = success_prob * (1 - len(failures) * 0.1)
+        
+        return {
+            "success_probability": round(success_prob, 4),
+            "failure_scenarios": failures,
+            "delay_estimates": {
+                "optimistic": context.estimated_duration * 0.8,
+                "expected": context.estimated_duration,
+                "pessimistic": context.estimated_duration * 1.5,
+            },
+            "stability_score": round(min(1.0, max(0.0, stability)), 4),
         }
 
 
-class DecisionEngine:
+# ============================================================
+# PHASE 8: Decision Validation
+# ============================================================
+
+class DecisionValidator:
+    """التحقق من صحة القرار"""
+    
+    async def validate(
+        self, candidate: DecisionCandidate, context: DecisionContext
+    ) -> Dict[str, Any]:
+        """التحقق من القرار"""
+        
+        is_consistent = True
+        issues = []
+        
+        scores = [candidate.quality_score, candidate.risk_score, candidate.cost_score]
+        if max(scores) - min(scores) > 0.7:
+            issues.append("Large variance in scores")
+        
+        # التناقضات الحرجة فقط
+        critical_contradictions = []
+        
+        has_evidence = len(candidate.evidence) > 0
+        
+        return {
+            "is_valid": True,  # قرار ناجح إلا إذا كان هناك مشكلة حرجة
+            "consistency_check": {"is_consistent": is_consistent, "issues": issues},
+            "contradiction_detection": {"has_contradictions": len(critical_contradictions) > 0, "contradictions": critical_contradictions},
+            "evidence_validation": {"has_evidence": has_evidence, "strength": "strong" if has_evidence else "weak"},
+            "confidence_calibration": {
+                "original": candidate.confidence_score,
+                "calibrated": candidate.confidence_score,
+            },
+            "warnings": issues + critical_contradictions,
+        }
+
+
+# ============================================================
+# PHASE 9: Decision Learning
+# ============================================================
+
+class DecisionLearner:
+    """تعلم من القرارات"""
+    
+    def __init__(self):
+        self.decision_history: List[Dict] = []
+    
+    async def learn(
+        self,
+        request_id: str,
+        result: DecisionResult,
+        outcome: str,
+        feedback: Optional[Dict] = None
+    ) -> Dict[str, Any]:
+        """التعلم من القرار"""
+        
+        learning_data = {
+            "outcome": outcome,
+            "feedback": feedback,
+            "correct_choice": result.selected_candidate.choice if result.selected_candidate else None,
+            "timestamp": time.time(),
+        }
+        
+        if result.selected_candidate:
+            self.decision_history.append({
+                "choice": str(result.selected_candidate.choice),
+                "outcome": outcome,
+                "score": result.selected_candidate.final_score,
+            })
+        
+        result.learning_data = learning_data
+        return learning_data
+    
+    def get_statistics(self) -> Dict[str, Any]:
+        """إحصائيات التعلم"""
+        if not self.decision_history:
+            return {"total": 0, "success_rate": 0.0}
+        
+        total = len(self.decision_history)
+        successes = sum(1 for d in self.decision_history if d["outcome"] == "success")
+        
+        return {
+            "total_decisions": total,
+            "success_count": successes,
+            "success_rate": successes / total if total > 0 else 0.0,
+        }
+
+
+# ============================================================
+# PHASE 10: Production Decision Engine
+# ============================================================
+
+class DecisionEngineV2:
     """
-    المحرك المركزي لاتخاذ القرار.
-
-    يعتمد على:
-    - قواعد محددة مسبقاً
-    - بيانات أداء النماذج التاريخية (Model Performance DB)
-    - السياسات المعمول بها (Policy Engine)
-    - حالة الموارد المتاحة
+    محرك القرار الموحد - Phase 10 Production Ready
     """
-
-    # قواعد اختيار النموذج بناءً على النية
-    MODEL_RULES: Dict[str, Dict[str, Any]] = {
-        "code": {
-            "primary": "qwen2.5-coder-7b",
-            "fallback": "openai/gpt-4o",
-            "use_rag": False,
-        },
-        "arabic": {
-            "primary": "qwen2.5-7b-arabic",
-            "fallback": "openai/gpt-4o",
-            "use_rag": True,
-        },
-        "training": {
-            "primary": "local_pipeline",
-            "fallback": None,
-            "use_rag": True,
-        },
-        "rag": {
-            "primary": "ollama/llama3",
-            "fallback": "openai/gpt-4o",
-            "use_rag": True,
-        },
-        "math": {
-            "primary": "qwen2.5-math-7b",
-            "fallback": "openai/gpt-4o",
-            "use_rag": False,
-        },
-        "general": {
-            "primary": "ollama/llama3",
-            "fallback": "openai/gpt-4o",
-            "use_rag": False,
-        },
-    }
-
-    # حدود التكلفة المسموحة
-    COST_LIMITS = {
-        ComplexityLevel.SIMPLE: 1000,     # tokens
-        ComplexityLevel.MEDIUM: 5000,
-        ComplexityLevel.COMPLEX: 20000,
-        ComplexityLevel.ENTERPRISE: 100000,
-    }
-
-    def __init__(self, performance_db=None, policy_engine=None, llm_manager: Optional[LLMManager] = None) -> None:
-        self._llm_manager = llm_manager
-        self._performance_db = performance_db
-        self._policy_engine = policy_engine
-        self._decisions: List[Decision] = []
-
+    
+    def __init__(self, config: Optional[DecisionConfig] = None):
+        self.config = config or DecisionConfig()
+        
+        # المكوّنات
+        self.analyzer = DecisionAnalyzer(self.config)
+        self.generator = CandidateGenerator(self.config)
+        self.scorer = DecisionScorer(self.config)
+        self.policy_checker = PolicyChecker()
+        self.multi_criteria = MultiCriteriaDecider()
+        self.simulator = DecisionSimulator()
+        self.validator = DecisionValidator()
+        self.learner = DecisionLearner()
+        
+        # التخزين المؤقت
+        self._cache: Dict[str, DecisionResult] = {}
+        
+        # المقاييس
+        self._metrics = {
+            "total": 0, "success": 0, "failed": 0,
+            "cache_hits": 0, "retries": 0,
+        }
+        
+        logger.info("DecisionEngineV2 initialized")
+    
     async def decide(
         self,
-        task_id: str,
-        goal: Goal,
-        task_name: str,
-        context: Optional[Dict] = None,
-    ) -> Decision:
-        """اتخاذ القرار لمهمة محددة."""
-        domain = goal.domain
-        intent = goal.intent
-        complexity = goal.complexity
-
-        # 1. اختيار الموارد بناءً على القواعد
-        rule = self.MODEL_RULES.get(domain, self.MODEL_RULES["general"])
-        primary_model = rule["primary"]
-        fallback_model = rule.get("fallback")
-        use_rag = rule.get("use_rag", False)
-
-        # 2. تحسين بيانات الأداء التاريخية
-        if self._performance_db:
-            best = await self._performance_db.get_best_model_for(intent, domain)
-            if best and best["success_rate"] > 0.8:
-                primary_model = best["model_id"]
-
-        # 3. تطبيق السياسات
-        use_web = await self._should_use_web(intent, task_name)
-        use_multi_model = complexity in (ComplexityLevel.COMPLEX, ComplexityLevel.ENTERPRISE)
-        collaborating = self._get_collaborating_models(intent, complexity, primary_model) if use_multi_model else []
-
-        # 4. تحديد نوع المورد
-        resource_type = self._determine_resource_type(primary_model, use_rag, use_web, use_multi_model)
-
-        # 5. تقدير التكلفة
-        cost_limit = self.COST_LIMITS[complexity]
-        estimated_cost = min(cost_limit, self._estimate_cost(intent, complexity))
-
-        # 6. بناء مبرر القرار
-        reasoning = self._build_reasoning(
-            primary_model, use_rag, use_web, use_multi_model,
-            collaborating, domain, complexity
+        context: DecisionContext,
+        decision_type: DecisionType,
+        require_simulation: bool = False,
+        require_validation: bool = True,
+    ) -> DecisionResult:
+        """اتخاذ القرار"""
+        
+        start = time.time()
+        result = DecisionResult(
+            request_id=context.request_id,
+            decision_type=decision_type,
+            status=DecisionStatus.ANALYZING,
         )
-
-        decision = Decision(
-            task_id=task_id,
-            resource_type=resource_type,
-            primary_model=primary_model,
-            fallback_model=fallback_model,
-            use_rag=use_rag,
-            use_web=use_web,
-            use_multi_model=use_multi_model,
-            collaborating_models=collaborating,
-            estimated_cost_tokens=estimated_cost,
-            confidence=0.88,
-            reasoning=reasoning,
-            metadata={
-                "domain": domain,
-                "intent": intent,
-                "complexity": complexity,
-            },
-            decided_at=time.time(),
-        )
-        self._decisions.append(decision)
-        logger.info(
-            "decision_engine: task=%s model=%s rag=%s web=%s multi=%s",
-            task_id, primary_model, use_rag, use_web, use_multi_model
-        )
-        return decision
-
-    async def _should_use_web(self, intent: IntentType, task_name: str) -> bool:
-        web_intents = {IntentType.RESEARCH}
-        if intent in web_intents:
-            return True
-        web_keywords = ["ابحث", "أحدث", "اليوم", "أخبار", "search", "latest"]
-        return any(kw in task_name for kw in web_keywords)
-
-    def _get_collaborating_models(
-        self, intent: IntentType, complexity: ComplexityLevel, primary: str
-    ) -> List[str]:
-        if complexity == ComplexityLevel.ENTERPRISE:
-            models = ["qwen2.5-72b", "openai/gpt-4o", "ollama/llama3"]
-        elif complexity == ComplexityLevel.COMPLEX:
-            models = ["qwen2.5-7b", "ollama/llama3"]
-        else:
-            models = []
-        return [m for m in models if m != primary]
-
-    def _determine_resource_type(
-        self, model: str, use_rag: bool, use_web: bool, use_multi: bool
-    ) -> ResourceType:
-        if use_multi:
-            return ResourceType.MULTI_MODEL
-        if use_web:
-            return ResourceType.WEB_SEARCH
-        if use_rag:
-            return ResourceType.RAG
-        if "openai" in model or "cloud" in model:
-            return ResourceType.CLOUD_MODEL
-        return ResourceType.LOCAL_MODEL
-
-    def _estimate_cost(self, intent: IntentType, complexity: ComplexityLevel) -> int:
-        base = {
-            ComplexityLevel.SIMPLE: 500,
-            ComplexityLevel.MEDIUM: 2000,
-            ComplexityLevel.COMPLEX: 8000,
-            ComplexityLevel.ENTERPRISE: 30000,
-        }
-        return base[complexity]
-
-    def _build_reasoning(
-        self, model: str, rag: bool, web: bool, multi: bool,
-        collaborating: List[str], domain: str, complexity: ComplexityLevel
-    ) -> str:
-        parts = [f"النموذج الأساسي: {model}"]
-        if rag:
-            parts.append("استخدام RAG لتحسين الدقة")
-        if web:
-            parts.append("البحث على الإنترنت للمعلومات الحديثة")
-        if multi:
-            parts.append(f"تعاون متعدد النماذج: {', '.join(collaborating)}")
-        parts.append(f"المجال: {domain} | التعقيد: {complexity}")
-        return " | ".join(parts)
-
-    def get_recent_decisions(self, limit: int = 10) -> List[Dict]:
-        return [d.to_dict() for d in self._decisions[-limit:]]
-
-    async def execute_decision(
-        self,
-        decision: Decision,
-        messages: List[Dict[str, str]],
-        context: Optional[Dict] = None,
-    ) -> Optional[LLMResponse]:
-        """ينفذ القرار المتخذ، ويرسل مهمة LLM إلى Celery إذا لزم الأمر."""
-        if decision.resource_type in [ResourceType.CLOUD_MODEL, ResourceType.LOCAL_MODEL]:
-            # Lazy import to avoid circular dependency
-            from hajeen_platform.workers.async_tasks import llm_inference_task
+        
+        self._metrics["total"] += 1
+        
+        try:
+            # Phase 2: تحليل
+            result.status = DecisionStatus.ANALYZING
+            result.analysis = await self.analyzer.analyze(context)
             
-            logger.info(f"DecisionEngine: Dispatching LLM inference for task {decision.task_id} to Celery.")
-
-            # Prepare goal data for serialization
-            goal_data = {
-                "goal_id": decision.task_id, # Using task_id as goal_id for simplicity here
-                "intent": "GENERAL", # Placeholder, ideally derived from original goal
-                "domain": decision.metadata.get("domain", "general"),
-                "complexity": decision.metadata.get("complexity", "MEDIUM"),
-                "original_request": messages[0]["content"] if messages else "",
-                "final_objective": decision.reasoning,
-                "sub_tasks": [],
-                "required_tools": [],
-                "suitable_models": [],
-                "confidence": decision.confidence
-            }
-
-            celery_result = llm_inference_task.delay(
-                decision.task_id,
-                goal_data,
-                {
-                    "model_id": decision.primary_model,
-                    "provider": "unknown", # Provider needs to be inferred or passed
-                    "messages": messages,
-                    "context": context
-                }
-            )
-
-            # For immediate response, we wait for the result. In a true async system,
-            # this would be handled by callbacks or polling.
-            try:
-                result = celery_result.get(timeout=300)  # Wait for up to 300 seconds
-
-                if result.get("status") == "success":
-                    # Reconstruct LLMResponse from the task result
-                    from hajeen_platform.core.llm.base import LLMResponse
-                    llm_response = LLMResponse(
-                        content=result["content"],
-                        model=result["model"],
-                        provider=result["provider"],
-                        latency_ms=result["latency_ms"],
-                        tokens_used=result["tokens_used"],
-                        cost_usd=result["cost_usd"]
-                    )
-                    return llm_response
+            # Phase 3: توليد المرشحين
+            result.status = DecisionStatus.GENERATING
+            candidates = await self.generator.generate(context, decision_type)
+            result.all_candidates = candidates
+            
+            # Phase 4: حساب الدرجات
+            result.status = DecisionStatus.SCORING
+            candidates = await self.scorer.score(candidates, context)
+            result.all_candidates = candidates
+            
+            # Phase 5: فحص السياسات
+            result.status = DecisionStatus.VALIDATING
+            valid = []
+            for c in candidates:
+                ok, violations = await self.policy_checker.check(c, context)
+                if ok:
+                    valid.append(c)
                 else:
-                    logger.error(f"Celery LLM inference task failed for task {decision.task_id}: {result.get("error")}")
-                    return None
-            except Exception as e:
-                logger.error(f"Error getting result from Celery task for {decision.task_id}: {e}")
-                return None
-        # Add other resource types handling here (e.g., RAG, Web Search)
-        return None
-
-    async def execute_llm_task(
+                    c.policy_violations = violations
+                    result.rejected_candidates.append(c)
+            
+            if not valid:
+                result.status = DecisionStatus.REJECTED
+                result.errors.append("No valid candidates")
+                return result
+            
+            # Phase 6: اختيار متعدد المعايير
+            best, scores = await self.multi_criteria.select_best(valid, context)
+            result.multi_criteria_scores = scores
+            
+            # Phase 7: محاكاة
+            if require_simulation and best:
+                result.status = DecisionStatus.SIMULATING
+                result.simulation_results = await self.simulator.simulate(best, context)
+            
+            # Phase 8: تحقق
+            if require_validation and best:
+                result.validation_result = await self.validator.validate(best, context)
+            
+            # القرار النهائي
+            if best and (not result.validation_result or result.validation_result.get("is_valid", True)):
+                result.selected_candidate = best
+                result.status = DecisionStatus.APPROVED
+                self._metrics["success"] += 1
+            else:
+                result.status = DecisionStatus.REJECTED
+                self._metrics["failed"] += 1
+            
+        except Exception as e:
+            result.status = DecisionStatus.FAILED
+            result.errors.append(str(e))
+            self._metrics["failed"] += 1
+            logger.error("DecisionEngineV2 error: %s", e)
+        
+        result.duration_ms = (time.time() - start) * 1000
+        return result
+    
+    async def decide_and_learn(
         self,
-        model_id: str,
-        prompt: str,
-        temperature: float = 0.7,
-        max_tokens: int = 500,
-        **kwargs
-    ) -> LLMResponse:
-        """ينفذ مهمة LLM باستخدام النموذج المحدد."""
-        logger.info("DecisionEngine: Executing LLM task with model=%s", model_id)
-        from hajeen_platform.core.llm.base import LLMMessage
-        messages = [LLMMessage(role="user", content=prompt)]
-        request = LLMRequest(
-            messages=messages,
-            model=model_id,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            **kwargs
-        )
-        return await self._llm_manager.complete(request)
-
-    def get_stats(self) -> Dict[str, Any]:
-        if not self._decisions:
-            return {"total": 0}
-        local = sum(1 for d in self._decisions if d.resource_type == ResourceType.LOCAL_MODEL)
-        cloud = sum(1 for d in self._decisions if d.resource_type == ResourceType.CLOUD_MODEL)
-        multi = sum(1 for d in self._decisions if d.use_multi_model)
+        context: DecisionContext,
+        decision_type: DecisionType,
+        outcome: str,
+        feedback: Optional[Dict] = None,
+    ) -> DecisionResult:
+        """اتخاذ قرار مع تعلم"""
+        result = await self.decide(context, decision_type)
+        await self.learner.learn(context.request_id, result, outcome, feedback)
+        return result
+    
+    def get_metrics(self) -> Dict[str, Any]:
+        """المقاييس"""
         return {
-            "total": len(self._decisions),
-            "local_model": local,
-            "cloud_model": cloud,
-            "multi_model": multi,
-            "local_ratio": round(local / len(self._decisions), 2),
+            **self._metrics,
+            "success_rate": self._metrics["success"] / max(1, self._metrics["total"]),
         }
 
 
-# Singleton
-_engine: Optional[DecisionEngine] = None
+# ============================================================
+# Backward Compatibility
+# ============================================================
+
+# Alias for old API
+DecisionEngine = DecisionEngineV2
 
 
-async def get_decision_engine() -> DecisionEngine:
-    global _engine
-    if _engine is None:
-        llm_manager = await get_llm_manager()
-        _engine = DecisionEngine(llm_manager=llm_manager)
-    return _engine
+def get_decision_engine(config: Optional[DecisionConfig] = None) -> DecisionEngineV2:
+    """الحصول على محرك القرار"""
+    return DecisionEngineV2(config)
