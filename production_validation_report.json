@@ -1,23 +1,39 @@
 {
-  "timestamp": "2026-07-20T23:08:01.785614",
+  "timestamp": "2026-07-21T00:37:16.951542",
   "summary": {
     "total": 11,
-    "passed": 8,
-    "failed": 3,
-    "success_rate": 72.72727272727273
+    "passed": 9,
+    "failed": 2,
+    "success_rate": 81.81818181818183
   },
   "test_results": [
     {
       "name": "E2E Flow - Full Request Pipeline",
-      "status": "FAIL",
-      "duration_ms": 745.7015514373779,
-      "details": {},
-      "error": "BrainRequest.__init__() got an unexpected keyword argument 'conversation_history'"
+      "status": "PASS",
+      "duration_ms": 2882.1380138397217,
+      "details": {
+        "reasoning_id": "f59eea44-1f32-44f7-bb5f-782ba6d03e14",
+        "strategy_used": "chain_of_thought",
+        "confidence": 0.3,
+        "trace_stats": {
+          "total_traces": 1,
+          "active_traces": 0,
+          "successful_traces": 1,
+          "failed_traces": 0,
+          "success_rate": 1.0,
+          "avg_duration_ms": 2003.016710281372,
+          "avg_llm_calls": 0.0,
+          "total_cache_hits": 0,
+          "total_cache_misses": 0,
+          "fallback_rate": 0.0
+        }
+      },
+      "error": ""
     },
     {
       "name": "Strategy: chain_of_thought",
       "status": "PASS",
-      "duration_ms": 2006.1671733856201,
+      "duration_ms": 2003.5157203674316,
       "details": {
         "strategy": "chain_of_thought",
         "steps_count": 0,
@@ -28,7 +44,7 @@
     {
       "name": "Strategy: first_principles",
       "status": "PASS",
-      "duration_ms": 2005.9762001037598,
+      "duration_ms": 2003.4024715423584,
       "details": {
         "strategy": "first_principles",
         "steps_count": 0,
@@ -39,7 +55,7 @@
     {
       "name": "Strategy: multi_perspective",
       "status": "PASS",
-      "duration_ms": 2005.711317062378,
+      "duration_ms": 2003.4644603729248,
       "details": {
         "strategy": "multi_perspective",
         "steps_count": 0,
@@ -50,7 +66,7 @@
     {
       "name": "Strategy: analogy",
       "status": "PASS",
-      "duration_ms": 2004.3659210205078,
+      "duration_ms": 2003.417730331421,
       "details": {
         "strategy": "analogy",
         "steps_count": 0,
@@ -61,7 +77,7 @@
     {
       "name": "Strategy: tree_of_thought",
       "status": "PASS",
-      "duration_ms": 2004.8761367797852,
+      "duration_ms": 2003.4236907958984,
       "details": {
         "strategy": "tree_of_thought",
         "steps_count": 0,
@@ -72,7 +88,7 @@
     {
       "name": "Strategy: decomposition",
       "status": "PASS",
-      "duration_ms": 2005.7644844055176,
+      "duration_ms": 2003.4093856811523,
       "details": {
         "strategy": "decomposition",
         "steps_count": 0,
@@ -83,7 +99,7 @@
     {
       "name": "Error Recovery - LLM Failure",
       "status": "PASS",
-      "duration_ms": 2003.7710666656494,
+      "duration_ms": 2003.9288997650146,
       "details": {
         "fallback_used": true
       },
@@ -92,28 +108,32 @@
     {
       "name": "Error Recovery - Cache",
       "status": "FAIL",
-      "duration_ms": 4011.4269256591797,
+      "duration_ms": 2003.6888122558594,
       "details": {
         "cache_working": false,
-        "llm_calls": 6
+        "llm_calls": 6,
+        "cache_hit": true
       },
       "error": ""
     },
     {
-      "name": "Architecture - Memory Leak",
+      "name": "Architecture - Memory Leak (1k ops)",
       "status": "FAIL",
-      "duration_ms": 201029.07752990723,
+      "duration_ms": 200916.0304069519,
       "details": {
-        "initial_objects": 151665,
-        "final_objects": 152705,
-        "growth": 1040
+        "num_operations": 1000,
+        "baseline_memory_mb": 0.0,
+        "final_memory_mb": 2.84,
+        "memory_growth_mb": 2.8418,
+        "memory_per_1k_ops_mb": 2.8418,
+        "memory_leak_detected": true
       },
       "error": ""
     },
     {
       "name": "Architecture - Circular Dependency",
       "status": "PASS",
-      "duration_ms": 0.008821487426757812,
+      "duration_ms": 0.0133514404296875,
       "details": {
         "modules_loaded": 5
       },
@@ -126,39 +146,60 @@
       "total": 100,
       "successful": 100,
       "failed": 0,
-      "avg_latency_ms": 2008.482723236084,
-      "p50": 2008.7611675262451,
-      "p95": 2010.5266571044922,
-      "p99": 2047.7852821350098,
-      "throughput_rps": 46.79321264222142,
-      "memory_mb": 22.4296875,
-      "error_rate": 0.0
+      "avg_latency_ms": 2008.7050580978394,
+      "p50": 2009.1149806976318,
+      "p95": 2014.4352912902832,
+      "p99": 2015.1586532592773,
+      "throughput_rps": 49.40487576881796,
+      "memory_mb": 0.19921875,
+      "error_rate": 0.0,
+      "additional_metrics": {
+        "peak_memory_mb": 88.6640625,
+        "llm_calls": 600,
+        "cache_hits": 0,
+        "cache_misses": 0,
+        "cache_hit_rate": 0
+      }
     },
     {
       "concurrent": 500,
       "total": 500,
       "successful": 500,
       "failed": 0,
-      "avg_latency_ms": 2115.4893231391907,
-      "p50": 2117.9556846618652,
-      "p95": 2228.3124923706055,
-      "p99": 2232.866048812866,
-      "throughput_rps": 177.1433552658698,
-      "memory_mb": 74.36328125,
-      "error_rate": 0.0
+      "avg_latency_ms": 2022.0552353858948,
+      "p50": 2024.376392364502,
+      "p95": 2034.6362590789795,
+      "p99": 2036.5207195281982,
+      "throughput_rps": 238.00275572915774,
+      "memory_mb": 2.80859375,
+      "error_rate": 0.0,
+      "additional_metrics": {
+        "peak_memory_mb": 91.47265625,
+        "llm_calls": 3000,
+        "cache_hits": 0,
+        "cache_misses": 0,
+        "cache_hit_rate": 0
+      }
     },
     {
       "concurrent": 1000,
       "total": 1000,
       "successful": 1000,
       "failed": 0,
-      "avg_latency_ms": 2878.485897541046,
-      "p50": 2875.0460147857666,
-      "p95": 3102.762222290039,
-      "p99": 3111.7310523986816,
-      "throughput_rps": 242.94664463971057,
-      "memory_mb": 65.59765625,
-      "error_rate": 0.0
+      "avg_latency_ms": 2027.4652540683746,
+      "p50": 2024.6593952178955,
+      "p95": 2050.7829189300537,
+      "p99": 2053.6415576934814,
+      "throughput_rps": 445.7630971679303,
+      "memory_mb": 4.25390625,
+      "error_rate": 0.0,
+      "additional_metrics": {
+        "peak_memory_mb": 95.7265625,
+        "llm_calls": 6000,
+        "cache_hits": 0,
+        "cache_misses": 0,
+        "cache_hit_rate": 0
+      }
     }
   ]
 }

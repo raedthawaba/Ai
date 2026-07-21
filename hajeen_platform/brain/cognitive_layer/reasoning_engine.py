@@ -1025,6 +1025,17 @@ class ReasoningEngine:
         """الحصول على إحصائيات التتبع."""
         return self.trace_manager.get_statistics()
 
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """الحصول على إحصائيات التخزين المؤقت."""
+        return {
+            "enabled": self.config.cache.enabled,
+            "entries": len(self._reasoning_cache),
+            "max_entries": self.config.cache.max_entries,
+            "ttl_seconds": self.config.cache.ttl_seconds,
+            "hits": self.metrics._counters.get("cache_hit", 0),
+            "misses": self.metrics._counters.get("cache_miss", 0),
+        }
+
     def clear_cache(self) -> int:
         """مسح التخزين المؤقت."""
         count = len(self._reasoning_cache)
