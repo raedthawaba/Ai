@@ -32,6 +32,13 @@ from brain.cognitive_layer.modular.explanation import ExplanationEngine
 from brain.cognitive_layer.modular.verification import VerificationLayer
 from brain.cognitive_layer.modular.reflection import ReflectionLayer
 
+# Import REAL strategies
+from brain.cognitive_layer.modular.strategies_real import (
+    SmartStrategySelector,
+    get_strategy_selector,
+    StrategyResult,
+)
+
 logger = structlog.get_logger(__name__)
 
 

@@ -3,7 +3,7 @@ Modular Reasoning Engine Architecture
 =====================================
 
 A refactored, modular architecture for the Reasoning Engine with:
-- Strategy Selector: Plugin-based strategy selection
+- Strategy Selector: Plugin-based strategy selection (25+ real strategies)
 - Reasoning Pipeline: Orchestration layer
 - Reasoning Context: Context management
 - Reasoning Session: Session management
@@ -67,6 +67,27 @@ from brain.cognitive_layer.modular.orchestrator import (
     create_modular_engine,
 )
 
+# REAL Strategy implementations
+from brain.cognitive_layer.modular.strategies_real import (
+    SmartStrategySelector,
+    get_strategy_selector,
+    StrategyResult as RealStrategyResult,
+    StrategyRegistry as RealStrategyRegistry,
+    # Individual strategies
+    ChainOfThoughtStrategy,
+    TreeOfThoughtsStrategy,
+    FirstPrinciplesStrategy,
+    DeductiveStrategy,
+    InductiveStrategy,
+    MathematicalStrategy,
+    DecompositionStrategy,
+    AnalogicalStrategy,
+    CausalStrategy,
+    ReActStrategy,
+    ProbabilisticStrategy,
+    MultiPerspectiveStrategy,
+)
+
 __all__ = [
     # Base
     "BaseLayer",
@@ -109,4 +130,21 @@ __all__ = [
     "ModularReasoningEngine",
     "ModularReasoningResult",
     "create_modular_engine",
+    # REAL Strategies
+    "SmartStrategySelector",
+    "get_strategy_selector",
+    "RealStrategyResult",
+    "RealStrategyRegistry",
+    "ChainOfThoughtStrategy",
+    "TreeOfThoughtsStrategy",
+    "FirstPrinciplesStrategy",
+    "DeductiveStrategy",
+    "InductiveStrategy",
+    "MathematicalStrategy",
+    "DecompositionStrategy",
+    "AnalogicalStrategy",
+    "CausalStrategy",
+    "ReActStrategy",
+    "ProbabilisticStrategy",
+    "MultiPerspectiveStrategy",
 ]
