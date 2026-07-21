@@ -158,7 +158,7 @@ class TestStateMachine:
 class TestMemoryFabric:
     def setup_method(self):
         from brain.memory.memory_fabric import MemoryFabric
-        self.fabric = MemoryFabric(storage_path="/tmp/test_memory")
+        self.fabric = MemoryFabric(storage_base="/tmp/test_memory")
 
     def test_session_memory(self):
         session = self.fabric.get_session("test-session")
@@ -180,8 +180,8 @@ class TestMemoryFabric:
         assert len(results) >= 1
 
     def test_procedural_memory(self):
-        self.fabric.learn_how("solve_problem", ["تحليل المشكلة", "البحث عن حل", "التطبيق"])
-        steps = self.fabric.recall_how("solve_problem")
+        self.fabric._procedural.learn_procedure("solve_problem", ["تحليل المشكلة", "البحث عن حل", "التطبيق"])
+        steps = self.fabric._procedural.recall_procedure("solve_problem")
         assert steps is not None
         assert len(steps) == 3
 
