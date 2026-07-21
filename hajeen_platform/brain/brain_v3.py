@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -35,6 +36,13 @@ from .cognitive_layer.reasoning_engine import (
     ReasoningResult,
     get_reasoning_engine,
 )
+# NEW: Import Modular Reasoning Engine
+from .cognitive_layer.modular.orchestrator import (
+    ModularReasoningEngine,
+    ModularReasoningResult,
+    create_modular_engine,
+)
+from .cognitive_layer.modular.strategy import ReasoningStrategy
 from .decision_engine import DecisionEngine, get_decision_engine
 from .goal_manager import Goal, GoalManager, get_goal_manager
 from .graph_planner import GraphPlanner, get_graph_planner
@@ -239,7 +247,22 @@ class HajeenBrainV3:
         self.context_analyzer: ContextAnalyzer = get_context_analyzer(
             memory_fabric=self.memory
         )
-        self.reasoning_engine: ReasoningEngine = get_reasoning_engine()
+        
+        # Initialize Reasoning Engine (supports both OLD and NEW modular engine)
+        self._use_modular_reasoning = os.environ.get("USE_MODULAR_REASONING", "true").lower() == "true"
+        
+        if self._use_modular_reasoning:
+            # NEW: Use Modular Reasoning Engine
+            from hajeen_platform.core.llm import get_llm_manager
+            llm_manager = get_llm_manager()
+            self.reasoning_engine: ModularReasoningEngine = create_modular_engine(llm_manager)
+            self._is_modular_engine = True
+            logger.info("Using MODULAR Reasoning Engine ✓")
+        else:
+            # OLD: Fallback to legacy engine
+            self.reasoning_engine: ReasoningEngine = get_reasoning_engine()
+            self._is_modular_engine = False
+            logger.info("Using LEGACY Reasoning Engine (fallback)")
         
         # تحديث Decision Engine
         self.decision_engine._performance_db = self.performance_db
@@ -371,7 +394,9 @@ class HajeenBrainV3:
             
             # ── Step 4: Reasoning Engine — استدلال عميق ─────────────────
             t4 = time.perf_counter()
-            reasoning: ReasoningResult = await self.reasoning_engine.reason(
+            
+            # Unified call works for both OLD and NEW engines
+            reasoning: Any = await self.reasoning_engine.reason(
                 problem=request.user_message,
                 context={
                     "intent": intent.primary_intent,
@@ -382,17 +407,39 @@ class HajeenBrainV3:
                     "relevant_memories": ctx_analysis.relevant_memories[:3],
                 },
             )
-            trace.reasoning_result = {
-                "result_id": reasoning.result_id,
-                "strategy": reasoning.strategy.value if hasattr(reasoning.strategy, "value") else str(reasoning.strategy),
-                "recommended_solution": reasoning.recommended_solution.title if reasoning.recommended_solution else None,
-                "steps_count": len(reasoning.reasoning_steps),
-                "risks_count": len(reasoning.risks),
-                "options_count": len(reasoning.solution_options),
-                "confidence": reasoning.confidence,
-                "missing_info": reasoning.missing_information,
-                "latency_ms": round((time.perf_counter() - t4) * 1000, 1),
-            }
+            
+            # Extract result data (compatible with both engine types)
+            if self._is_modular_engine:
+                # NEW ModularReasoningResult format
+                trace.reasoning_result = {
+                    "result_id": reasoning.reasoning_id,
+                    "engine": "modular_v2",
+                    "strategy": reasoning.strategy_used.value if hasattr(reasoning.strategy_used, "value") else str(reasoning.strategy_used),
+                    "recommended_solution": reasoning.recommended_solution.get("title") if reasoning.recommended_solution else None,
+                    "steps_count": len(reasoning.reasoning_steps),
+                    "risks_count": len(reasoning.risks),
+                    "options_count": len(reasoning.solution_options),
+                    "confidence": reasoning.overall_confidence,
+                    "missing_info": reasoning.missing_information,
+                    "explanation": bool(reasoning.explanation),
+                    "verification": bool(reasoning.verification),
+                    "reflection": bool(reasoning.reflection),
+                    "latency_ms": round((time.perf_counter() - t4) * 1000, 1),
+                }
+            else:
+                # OLD ReasoningResult format
+                trace.reasoning_result = {
+                    "result_id": reasoning.result_id,
+                    "engine": "legacy_v1",
+                    "strategy": reasoning.strategy.value if hasattr(reasoning.strategy, "value") else str(reasoning.strategy),
+                    "recommended_solution": reasoning.recommended_solution.title if reasoning.recommended_solution else None,
+                    "steps_count": len(reasoning.reasoning_steps),
+                    "risks_count": len(reasoning.risks),
+                    "options_count": len(reasoning.solution_options),
+                    "confidence": reasoning.confidence,
+                    "missing_info": reasoning.missing_information,
+                    "latency_ms": round((time.perf_counter() - t4) * 1000, 1),
+                }
             
             # ── Step 5: Task Decomposer — تفكيك إلى مهام ───────────────────
             t5 = time.perf_counter()
@@ -722,9 +769,19 @@ class HajeenBrainV3:
     # ── Status & Overview ───────────────────────────────────────────────────
     def get_status(self) -> Dict[str, Any]:
         """حالة شاملة لـ Hajeen Brain v3."""
+        # Get reasoning engine stats if available
+        reasoning_stats = {}
+        if hasattr(self.reasoning_engine, "get_cache_stats"):
+            reasoning_stats = self.reasoning_engine.get_cache_stats()
+        
         return {
             "version": self.VERSION,
             "status": "operational",
+            "reasoning_engine": {
+                "type": "modular_v2" if self._is_modular_engine else "legacy_v1",
+                "active": True,
+                "cache": reasoning_stats,
+            },
             "stats": dict(self._stats),
             "active_requests": len(self._active_requests),
             "memory": self.memory.get_overview(),
