@@ -325,25 +325,32 @@ class HajeenBrainV3:
                 "latency_ms": round((time.perf_counter() - t2) * 1000, 1),
             }
 
-            # ── Goal Analysis ──────────────────────────────────────────────
-            t2b = time.perf_counter()
-            goal = await self.goal_manager.analyze(
-                request.user_message,
+            # ── Step 3: Planning Engine — المنسق الرئيسي ─────────────────
+            # يستخدم PlanningEngine كمنسق لجميع مكونات التخطيط
+            from .planning_engine import get_planning_engine
+            planning_engine = get_planning_engine()
+            
+            t_planning = time.perf_counter()
+            planning_result = await planning_engine.execute(
+                request=request.user_message,
                 context={
                     "session_id": request.session_id,
                     "intent": intent.primary_intent,
                     **request.context,
                 },
             )
-            trace.goal_analysis = {
-                "goal_id": goal.goal_id,
-                "final_objective": goal.final_objective,
-                "complexity": goal.complexity,
-                "domain": goal.domain,
-                "latency_ms": round((time.perf_counter() - t2b) * 1000, 1),
+            trace.planning = {
+                "success": planning_result.success,
+                "goal_id": planning_result.planning_result.goal.goal_id if planning_result.goal else None,
+                "plan_id": planning_result.plan.plan_id if planning_result.plan else None,
+                "tasks": len(planning_result.plan.tasks) if planning_result.plan else 0,
+                "graph_nodes": len(planning_result.graph.nodes) if planning_result.graph else 0,
+                "validation": planning_result.validation.status.value if planning_result.validation else None,
+                "replanned": planning_result.replanned,
+                "latency_ms": round((time.perf_counter() - t_planning) * 1000, 1),
             }
             
-            # ── Step 3: Context Analyzer — تحليل السياق والذاكرة ──────────
+            # ── Step 4: Context Analyzer — تحليل السياق والذاكرة ──────────
             t3 = time.perf_counter()
             ctx_analysis: ContextAnalysis = await self.context_analyzer.analyze(
                 user_message=request.user_message,
@@ -351,7 +358,7 @@ class HajeenBrainV3:
                 user_id=request.user_id,
                 additional_context={
                     "intent": intent.primary_intent,
-                    "goal": goal.final_objective,
+                    "goal": planning_result.goal.final_objective,
                     **request.context,
                 },
             )
@@ -375,7 +382,7 @@ class HajeenBrainV3:
                 problem=request.user_message,
                 context={
                     "intent": intent.primary_intent,
-                    "goal": goal.final_objective,
+                    "goal": planning_result.goal.final_objective,
                     "domain": ctx_analysis.detected_domain,
                     "complexity": ctx_analysis.estimated_complexity,
                     "constraints": ctx_analysis.constraints,
@@ -418,7 +425,7 @@ class HajeenBrainV3:
             decision = await self.decision_engine.decide(
                 task_id=plan.tasks[0].task_id if plan.tasks else request_id,
                 goal=goal,
-                task_name=goal.final_objective,
+                task_name=planning_result.goal.final_objective,
                 context={"force_model": request.force_model},
             )
             
@@ -438,7 +445,7 @@ class HajeenBrainV3:
             task_lifecycle = self.state_machine.create_task(
                 task_id=request_id,
                 max_retries=2,
-                metadata={"goal_id": goal.goal_id, "session_id": request.session_id},
+                metadata={"goal_id": planning_result.goal.goal_id, "session_id": request.session_id},
             )
             await self.state_machine.transition(request_id, TaskState.PLANNING, "Goal analyzed")
             
@@ -473,7 +480,7 @@ class HajeenBrainV3:
                 # نموذج واحد
                 route_result = await self.model_router.route(
                     messages=messages,
-                    capability=goal.domain,
+                    capability=planning_result.goal.domain,
                     budget_tokens=request.max_tokens,
                     force_model=decision.primary_model if decision.primary_model else None,
                 )
@@ -500,8 +507,8 @@ class HajeenBrainV3:
             self.performance_db.record_call(
                 model_id=model_used,
                 provider=self._get_provider(model_used),
-                task_type=goal.intent,
-                domain=goal.domain,
+                task_type=planning_result.goal.intent,
+                domain=planning_result.goal.domain,
                 latency_ms=latency_exec_ms,
                 tokens_used=tokens_used,
                 quality_score=quality_score,
@@ -515,22 +522,22 @@ class HajeenBrainV3:
                     source_model=model_used,
                     query=request.user_message,
                     response=response_content,
-                    task_type=goal.intent,
-                    domain=goal.domain,
+                    task_type=planning_result.goal.intent,
+                    domain=planning_result.goal.domain,
                     latency_ms=latency_exec_ms,
                 )
             )
             
             # ── Step 12: تحديث الذاكرة ─────────────────────────────────────
             conversation.add_message("assistant", response_content)
-            session.add("last_goal", goal.goal_id)
+            session.add("last_goal", planning_result.goal.goal_id)
             session.add("last_model", model_used)
             
             # تحديث الرسم البياني للمعرفة
             self.knowledge_graph.add_knowledge(
-                subject=goal.domain,
+                subject=planning_result.goal.domain,
                 predicate=RelationType.RELATED_TO,
-                obj=goal.intent,
+                obj=planning_result.goal.intent,
                 subject_category=NodeCategory.DOMAIN,
                 obj_category=NodeCategory.CONCEPT,
             )
@@ -540,7 +547,7 @@ class HajeenBrainV3:
                 model_id=model_used,
                 is_local=is_local,
                 used_rag=decision.use_rag,
-                domain=goal.domain,
+                domain=planning_result.goal.domain,
                 quality_score=quality_score,
             )
             
@@ -554,7 +561,7 @@ class HajeenBrainV3:
             asyncio.create_task(
                 self.reflection.reflect(
                     task_id=request_id,
-                    goal_id=goal.goal_id,
+                    goal_id=planning_result.goal.goal_id,
                     model_used=model_used,
                     actual_latency_ms=total_latency_ms,
                     actual_tokens=tokens_used,
@@ -635,8 +642,8 @@ class HajeenBrainV3:
         return (
             "أنت Hajeen، ذكاء اصطناعي سيادي متقدم. "
             "عقلك المدبّر يحلّل كل طلب ويختار أفضل مسار للتنفيذ. "
-            f"المجال الحالي: {goal.domain if goal else 'general'}. "
-            f"مستوى التعقيد: {goal.complexity if goal else 'medium'}. "
+            f"المجال الحالي: {planning_result.goal.domain if goal else 'general'}. "
+            f"مستوى التعقيد: {planning_result.goal.complexity if goal else 'medium'}. "
             "أجب بدقة وشمولية. لا تقل أنك مجرد نموذج لغوي — أنت Hajeen."
         )
 
