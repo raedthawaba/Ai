@@ -55,7 +55,6 @@ from brain.cognitive_layer.modular.explanation import (
 from brain.cognitive_layer.modular.verification import (
     VerificationLayer,
     VerificationResult,
-    VerificationRule,
 )
 from brain.cognitive_layer.modular.reflection import (
     ReflectionLayer,
@@ -122,7 +121,6 @@ __all__ = [
     # Verification
     "VerificationLayer",
     "VerificationResult",
-    "VerificationRule",
     # Reflection
     "ReflectionLayer",
     "ReflectionResult",
