@@ -155,6 +155,28 @@ class PlanningEngine:
         )
         return plan
 
+    async def execute(
+        self,
+        context: PlanContext,
+        steps: List[Dict[str, Any]],
+    ) -> ExecutionResult:
+        """إنشاء وتنفيذ خطة وإرجاع النتيجة."""
+        plan = self.create_plan(
+            name=f"plan_{context.goal[:50]}",
+            description=f"Execution plan for: {context.goal}",
+            priority=context.priority,
+            context=context,
+            steps=steps,
+        )
+        
+        result = await self.execute_plan(plan.plan_id)
+        
+        # إضافة معلومات السياق إلى النتيجة
+        result.context = context
+        result.priority = context.priority
+        
+        return result
+
     async def execute_plan(self, plan_id: str) -> ExecutionResult:
         """تنفيذ خطة معينة."""
         async with self._lock:

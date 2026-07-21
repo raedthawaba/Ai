@@ -133,12 +133,43 @@ class DecisionEngine:
         domain = goal.domain
         intent = goal.intent
         complexity = goal.complexity
-
+        
+        # استلام PlanningResult من السياق
+        planning_result = None
+        if context:
+            planning_result = context.get("planning_result")
+        
         # 1. اختيار الموارد بناءً على القواعد
         rule = self.MODEL_RULES.get(domain, self.MODEL_RULES["general"])
         primary_model = rule["primary"]
         fallback_model = rule.get("fallback")
         use_rag = rule.get("use_rag", False)
+        
+        # ─── التأثير من PlanningResult ───────────────────────────────────────
+        # إذا كان هناك PlanningResult، استخدمه لتعديل القرار
+        if planning_result:
+            # أ) تعديل الأولوية والتعقيد
+            if hasattr(planning_result, 'priority') and planning_result.priority:
+                # أولوية CRITICAL/HIGH تتطلب نموذج أقوى
+                if planning_result.priority.value <= 2:  # CRITICAL=1, HIGH=2
+                    primary_model = "openai/gpt-4o"  # ترقية للنموذج الأقوى
+            
+            # ب) تعديل بناءً على القدرات المطلوبة
+            if hasattr(planning_result, 'required_capabilities') and planning_result.required_capabilities:
+                caps = planning_result.required_capabilities
+                if "code" in caps or "coding" in caps:
+                    primary_model = "qwen2.5-coder-7b"
+                    use_rag = False
+                elif "arabic" in caps:
+                    primary_model = "qwen2.5-7b-arabic"
+                    use_rag = True
+            
+            # ج) تعديل بناءً على التعقيد
+            if hasattr(planning_result, 'estimated_complexity'):
+                step_count = planning_result.estimated_complexity
+                # مهام معقدة (5+ خطوات) تحتاج تعاون نماذج
+                if step_count >= 5:
+                    complexity = ComplexityLevel.COMPLEX
 
         # 2. تحسين بيانات الأداء التاريخية
         if self._performance_db:
@@ -159,10 +190,14 @@ class DecisionEngine:
         estimated_cost = min(cost_limit, self._estimate_cost(intent, complexity))
 
         # 6. بناء مبرر القرار
+        planning_info = ""
+        if planning_result:
+            planning_info = f" (planning: {planning_result.completed_steps} steps, priority={planning_result.priority.value if planning_result.priority else 'N/A'})"
+        
         reasoning = self._build_reasoning(
             primary_model, use_rag, use_web, use_multi_model,
             collaborating, domain, complexity
-        )
+        ) + planning_info
 
         decision = Decision(
             task_id=task_id,
@@ -180,13 +215,16 @@ class DecisionEngine:
                 "domain": domain,
                 "intent": intent,
                 "complexity": complexity,
+                "planning_result_id": planning_result.result_id if planning_result else None,
+                "planning_priority": planning_result.priority.value if planning_result and planning_result.priority else None,
             },
             decided_at=time.time(),
         )
         self._decisions.append(decision)
         logger.info(
-            "decision_engine: task=%s model=%s rag=%s web=%s multi=%s",
-            task_id, primary_model, use_rag, use_web, use_multi_model
+            "decision_engine: task=%s model=%s rag=%s web=%s multi=%s planning=%s",
+            task_id, primary_model, use_rag, use_web, use_multi_model,
+            planning_result.result_id if planning_result else None
         )
         return decision
 

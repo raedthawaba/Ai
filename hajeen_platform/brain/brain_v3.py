@@ -455,15 +455,23 @@ class HajeenBrainV3:
                 steps=planning_steps,
             )
             
+            # ملء الحقول الإضافية في PlanningResult
+            planning_result.step_names = [s["name"] for s in planning_steps]
+            planning_result.required_capabilities = self._extract_capabilities(planning_steps)
+            planning_result.estimated_complexity = len(planning_steps)
+            
             trace.planning = {
                 "graph_id": graph.graph_id,
                 "node_count": len(graph.nodes),
                 "edge_count": len(graph.edges),
-                "planning_result_id": planning_result.result_id if hasattr(planning_result, 'result_id') else None,
-                "executed_steps": planning_result.completed_steps if hasattr(planning_result, 'completed_steps') else 0,
+                "planning_result_id": planning_result.result_id,
+                "executed_steps": planning_result.completed_steps,
                 "planning_latency_ms": (time.perf_counter() - t_pe) * 1000,
                 "latency_ms": (time.perf_counter() - t6) * 1000,
-                "success": planning_result.success if hasattr(planning_result, 'success') else True,
+                "success": planning_result.success,
+                "priority": planning_result.priority.value if planning_result.priority else None,
+                "complexity_score": planning_result.complexity_score,
+                "required_capabilities": planning_result.required_capabilities,
             }
             
             # ── Step 7: Decision Engine — اختيار الموارد ───────────────────
@@ -472,7 +480,10 @@ class HajeenBrainV3:
                 task_id=plan.tasks[0].task_id if plan.tasks else request_id,
                 goal=goal,
                 task_name=goal.final_objective,
-                context={"force_model": request.force_model},
+                context={
+                    "force_model": request.force_model,
+                    "planning_result": planning_result,  # ← تمرير PlanningResult
+                },
             )
             
             # تطبيق force_model إذا وُجد
@@ -813,6 +824,26 @@ class HajeenBrainV3:
     def get_knowledge_context(self, entity: str) -> Dict[str, Any]:
         """سياق المعرفة لكيان معين."""
         return self.knowledge_graph.get_context_for(entity)
+
+    def _extract_capabilities(self, steps: List[Dict[str, Any]]) -> List[str]:
+        """استخراج القدرات المطلوبة من خطوات التخطيط."""
+        capabilities = []
+        capability_keywords = {
+            "code": ["code", "coding", "برمجة", "اكتب", "function", "class"],
+            "arabic": ["arabic", "عربي", "النصوص العربية"],
+            "math": ["math", "رياضيات", "حساب", "equation"],
+            "research": ["research", "بحث", "ابحث", "اعرف"],
+            "creative": ["write", "اكتب", "story", "قصة", "poem"],
+        }
+        
+        for step in steps:
+            step_text = f"{step.get('name', '')} {step.get('description', '')}".lower()
+            for cap, keywords in capability_keywords.items():
+                if any(kw.lower() in step_text for kw in keywords):
+                    if cap not in capabilities:
+                        capabilities.append(cap)
+        
+        return capabilities if capabilities else ["general"]
 
     async def trigger_weekly_analysis(self) -> Dict[str, Any]:
         """تشغيل التحليل الأسبوعي يدوياً."""

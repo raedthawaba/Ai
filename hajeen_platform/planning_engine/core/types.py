@@ -41,6 +41,9 @@ class ExecutionState(str, Enum):
 @dataclass
 class PlanContext:
     """سياق الخطة - معلومات إضافية."""
+    goal: Optional[str] = None  # الهدف من الخطة
+    constraints: Optional[List[str]] = None  # القيود
+    priority: PlanPriority = PlanPriority.MEDIUM  # الأولوية
     user_id: Optional[str] = None
     session_id: Optional[str] = None
     correlation_id: Optional[str] = None
@@ -194,14 +197,35 @@ class ExecutionResult:
     errors: List[str] = field(default_factory=list)
     results: Dict[str, Any] = field(default_factory=dict)
     metadata: Dict[str, Any] = field(default_factory=dict)
-
+    
+    # حقول تؤثر على Decision Engine
+    priority: Optional[PlanPriority] = None  # أولوية الخطة
+    context: Optional[PlanContext] = None  # سياق الخطة
+    step_names: List[str] = field(default_factory=list)  # أسماء الخطوات
+    required_capabilities: List[str] = field(default_factory=list)  # القدرات المطلوبة
+    estimated_complexity: int = 1  # التعقيد التقديري (1-5)
+    
+    @property
+    def result_id(self) -> str:
+        """معرف النتيجة."""
+        return self.plan_id
+    
+    @property
+    def complexity_score(self) -> float:
+        """درجة التعقيد بناءً على الخطوات."""
+        return min(self.completed_steps / 5.0, 1.0)
+    
     def to_dict(self) -> Dict[str, Any]:
         return {
             "plan_id": self.plan_id,
+            "result_id": self.result_id,
             "success": self.success,
             "completed_steps": self.completed_steps,
             "failed_steps": self.failed_steps,
             "total_duration_ms": self.total_duration_ms,
+            "priority": self.priority.value if self.priority else None,
+            "complexity_score": self.complexity_score,
+            "required_capabilities": self.required_capabilities,
             "errors": self.errors,
             "results": self.results,
             "metadata": self.metadata,
