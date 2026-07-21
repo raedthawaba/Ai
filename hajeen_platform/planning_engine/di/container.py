@@ -89,19 +89,34 @@ class DependencyContainer(IDependencyContainer):
         scope: Scope = Scope.SINGLETON,
         **metadata: Any,
     ) -> Callable[[Type], Type]:
-        """تسجيل خدمة."""
+        """تسجيل خدمة - يدعم الاستخدام المباشر والديكوريتور."""
+        impl = implementation
+        
         def decorator(cls: Type[TInterface]) -> Type[TInterface]:
-            impl = implementation or cls
+            nonlocal impl
+            actual_impl = impl or cls
             self._services[interface] = ServiceDescriptor(
                 interface=interface,
-                implementation=impl,
+                implementation=actual_impl,
                 factory=factory,
                 scope=scope,
                 metadata=metadata,
             )
             logger.debug("di: registered interface=%s impl=%s scope=%s",
-                        interface.__name__, impl.__name__, scope)
+                        interface.__name__, actual_impl.__name__, scope)
             return cls
+        
+        # If called directly (without @), register immediately
+        if implementation is not None or factory is not None:
+            decorator(interface)  # Use interface as the class for impl=None case
+            self._services[interface] = ServiceDescriptor(
+                interface=interface,
+                implementation=impl if impl else interface,
+                factory=factory,
+                scope=scope,
+                metadata=metadata,
+            )
+        
         return decorator
 
     def register_instance(self, interface: Type[TInterface], instance: TInterface) -> None:

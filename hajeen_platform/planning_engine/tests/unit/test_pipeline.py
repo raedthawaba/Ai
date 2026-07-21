@@ -111,8 +111,10 @@ class TestPipelineOrchestrator:
         
         result = await pipeline.execute({})
         
-        # Pipeline should complete but with errors
-        assert result.metadata.get("error") is not None
+        # Pipeline should have a failed stage
+        assert len(result.results) == 1
+        assert result.results[0].success is False
+        assert result.results[0].error is not None
 
     @pytest.mark.asyncio
     async def test_stage_timeout(self, pipeline):

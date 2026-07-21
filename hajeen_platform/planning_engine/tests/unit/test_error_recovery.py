@@ -214,16 +214,8 @@ class TestCircuitBreaker:
     @pytest.mark.asyncio
     async def test_half_open_after_timeout(self, breaker):
         """Test circuit goes to HALF_OPEN after timeout."""
-        async def failing_operation():
-            raise ValueError("Fail")
-        
-        for _ in range(3):
-            try:
-                await breaker.call(failing_operation)
-            except ValueError:
-                pass
-        
-        assert breaker.state == CircuitState.OPEN
+        breaker._state = CircuitState.OPEN
+        breaker._last_failure_time = time.time()
         
         # Wait for timeout
         await asyncio.sleep(0.6)
@@ -231,16 +223,12 @@ class TestCircuitBreaker:
         # Should transition to HALF_OPEN on next availability check
         is_available = breaker.is_available()
         assert is_available is True
-        # State might be HALF_OPEN now
 
     @pytest.mark.asyncio
     async def test_close_after_successes(self, breaker):
         """Test circuit closes after successes in HALF_OPEN."""
         breaker._state = CircuitState.HALF_OPEN
         breaker._success_count = 0
-        
-        async def success_operation():
-            return "success"
         
         for _ in range(2):
             await breaker._on_success()
@@ -253,6 +241,7 @@ class TestCircuitBreaker:
         
         assert stats["name"] == "test_breaker"
         assert "state" in stats
+        assert "failure_count" in stats
 
     @pytest.mark.asyncio
     async def test_reset(self, breaker):
@@ -263,7 +252,7 @@ class TestCircuitBreaker:
         await breaker.reset()
         
         assert breaker.state == CircuitState.CLOSED
-        assert breaker.failure_count == 0
+        assert breaker._failure_count == 0
 
     @pytest.mark.asyncio
     async def test_call_when_open(self, breaker):

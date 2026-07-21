@@ -17,28 +17,24 @@ class DummyService:
         self.value = value
 
 
-class DummyServiceWithDep:
-    """Service with dependency."""
-    def __init__(self, dummy: DummyService):
-        self.dummy = dummy
+class AnotherService:
+    """Another service for testing."""
+    pass
 
 
 class TestDependencyContainer:
     """Tests for DependencyContainer class."""
 
-    @pytest.fixture
-    def container(self):
-        """Create container instance."""
-        return DependencyContainer()
-
-    def test_register_class(self, container):
+    def test_register_class(self):
         """Test registering a class."""
+        container = DependencyContainer()
         container.register(DummyService, DummyService, scope=Scope.SINGLETON)
         
         assert DummyService in container._services
 
-    def test_register_instance(self, container):
+    def test_register_instance(self):
         """Test registering an instance."""
+        container = DependencyContainer()
         instance = DummyService("custom")
         container.register_instance(DummyService, instance)
         
@@ -46,17 +42,19 @@ class TestDependencyContainer:
         assert resolved.value == "custom"
         assert resolved is instance
 
-    def test_register_decorator(self, container):
+    def test_register_decorator(self):
         """Test register decorator."""
-        @container.register(DummyService, scope=Scope.TRANSIENT)
+        container = DependencyContainer()
+        
+        @container.register(AnotherService, scope=Scope.TRANSIENT)
         class MyService:
             pass
         
-        # Note: decorator registers with interface=DummyService
-        assert DummyService in container._services
+        assert AnotherService in container._services
 
-    def test_resolve_singleton(self, container):
+    def test_resolve_singleton(self):
         """Test resolving singleton."""
+        container = DependencyContainer()
         container.register(DummyService, DummyService, scope=Scope.SINGLETON)
         
         instance1 = container.resolve(DummyService)
@@ -64,8 +62,9 @@ class TestDependencyContainer:
         
         assert instance1 is instance2
 
-    def test_resolve_transient(self, container):
+    def test_resolve_transient(self):
         """Test resolving transient."""
+        container = DependencyContainer()
         container.register(DummyService, DummyService, scope=Scope.TRANSIENT)
         
         instance1 = container.resolve(DummyService)
@@ -73,47 +72,44 @@ class TestDependencyContainer:
         
         assert instance1 is not instance2
 
-    def test_resolve_not_found(self, container):
+    def test_resolve_not_found(self):
         """Test resolving non-existent service."""
+        container = DependencyContainer()
         with pytest.raises(DependencyNotFoundError):
             container.resolve(DummyService)
 
-    def test_resolve_with_default(self, container):
-        """Test resolving with default."""
-        try:
-            result = container.resolve(DummyService)
-        except DependencyNotFoundError:
-            result = None
-        assert result is None
-
-    def test_unregister(self, container):
+    def test_unregister(self):
         """Test unregistering a service."""
+        container = DependencyContainer()
         container.register(DummyService, DummyService, scope=Scope.SINGLETON)
         container.unregister(DummyService)
         
         assert DummyService not in container._services
 
-    def test_scope_context(self, container):
+    def test_scope_context(self):
         """Test scoped resolution."""
+        container = DependencyContainer()
         container.register(DummyService, DummyService, scope=Scope.SCOPED)
         
-        with container.create_scope("test_scope") as scope:
+        with container.create_scope("unique_scope_1") as scope:
             instance1 = container.resolve(DummyService)
         
-        with container.create_scope("test_scope2") as scope:
+        with container.create_scope("unique_scope_2") as scope:
             instance2 = container.resolve(DummyService)
         
         assert instance1 is not instance2
 
-    def test_is_registered(self, container):
+    def test_is_registered(self):
         """Test checking registration."""
+        container = DependencyContainer()
         assert container.is_registered(DummyService) is False
         
         container.register(DummyService, DummyService)
         assert container.is_registered(DummyService) is True
 
-    def test_get_registered_services(self, container):
+    def test_get_registered_services(self):
         """Test getting registered services."""
+        container = DependencyContainer()
         container.register(DummyService, DummyService)
         
         services = container.get_registered_services()
@@ -135,7 +131,7 @@ class TestLazyResolution:
     def test_lazy_resolution(self):
         """Test lazy resolution."""
         container = DependencyContainer()
-        container.register(DummyService, scope=Scope.SINGLETON)
+        container.register(DummyService, DummyService, scope=Scope.SINGLETON)
         
         from planning_engine.di.container import lazy_resolve
         

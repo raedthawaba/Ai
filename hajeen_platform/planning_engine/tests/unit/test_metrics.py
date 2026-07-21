@@ -67,24 +67,24 @@ class TestMetricsCollector:
 
     def test_timer(self, collector):
         """Test timer."""
-        collector.register_metric("operation_duration", MetricType.HISTOGRAM)
+        collector.register_metric("operation_duration_duration_ms", MetricType.HISTOGRAM)
         
         stop_timer = collector.timer("operation_duration")
         time.sleep(0.01)
         stop_timer()
         
-        metric = collector._metrics["operation_duration"]
+        metric = collector._metrics["operation_duration_duration_ms"]
         assert metric.count == 1
         assert metric.sum > 0
 
     def test_timed_context(self, collector):
         """Test timed context manager."""
-        collector.register_metric("timed_operation", MetricType.HISTOGRAM)
+        collector.register_metric("timed_operation_duration_ms", MetricType.HISTOGRAM)
         
         with collector.timed("timed_operation"):
             time.sleep(0.01)
         
-        metric = collector._metrics["timed_operation"]
+        metric = collector._metrics["timed_operation_duration_ms"]
         assert metric.count == 1
 
     def test_get_all(self, collector):

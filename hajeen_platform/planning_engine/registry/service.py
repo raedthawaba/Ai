@@ -144,6 +144,35 @@ class ServiceRegistry(IServiceRegistry):
             return True
         return False
 
+    def register_factory(
+        self,
+        service_id: str,
+        factory: Callable[[], T],
+        service_type: Optional[Type[T]] = None,
+        scope: Optional[RegistryScope] = None,
+        **metadata: Any,
+    ) -> None:
+        """تسجيل factory method."""
+        if service_id in self._services:
+            logger.warning("registry: service already registered %s", service_id)
+            return
+        
+        # Create a temporary instance to get the type if not provided
+        temp_instance = factory()
+        impl_type = service_type or type(temp_instance)
+        
+        registration = ServiceRegistration(
+            service_id=service_id,
+            service_type=impl_type,
+            implementation=impl_type,
+            factory=factory,
+            scope=scope or self._scope,
+            metadata=metadata,
+        )
+        
+        self._services[service_id] = registration
+        logger.debug("registry: registered factory service_id=%s", service_id)
+
     def resolve(self, service_id: str) -> Any:
         """حل خدمة."""
         registration = self._services.get(service_id)

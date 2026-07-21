@@ -67,6 +67,15 @@ from .sovereignty.sovereignty_layer import SovereigntyLayer, get_sovereignty_lay
 from .state_machine import StateMachine, TaskState, get_state_machine
 from .task_decomposer import TaskDecomposer, get_task_decomposer
 
+# Planning Engine Integration
+from planning_engine import (
+    PlanningEngine,
+    EngineConfig,
+    PlanPriority,
+    PlanContext,
+    StepHandler,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -241,6 +250,15 @@ class HajeenBrainV3:
         )
         self.reasoning_engine: ReasoningEngine = get_reasoning_engine()
         
+        # ── Planning Engine ───────────────────────────────────────────────
+        self.planning_engine: PlanningEngine = PlanningEngine(
+            EngineConfig(
+                max_concurrent_steps=5,
+                default_timeout_seconds=60.0,
+                enable_parallel_execution=True,
+            )
+        )
+        
         # تحديث Decision Engine
         self.decision_engine._performance_db = self.performance_db
         self.decision_engine._policy_engine = self.policy
@@ -406,11 +424,46 @@ class HajeenBrainV3:
             # ── Step 6: Graph Planner — بناء خطة التنفيذ ───────────────────
             t6 = time.perf_counter()
             graph = await self.graph_planner.build_graph(plan)
+            
+            # ── Step 6.5: Planning Engine — تنفيذ الخطة ─────────────────────
+            # تحويل graph nodes إلى خطوات تنفيذ Planning Engine
+            planning_steps = []
+            for node_id, node in graph.nodes.items():
+                planning_steps.append({
+                    "name": node_id,
+                    "description": f"Execute: {node.task.task_description if hasattr(node, 'task') else str(node_id)}",
+                    "depends_on": [e.source for e in graph.edges.values() if e.target == node_id],
+                })
+            
+            # إنشاء سياق التخطيط
+            planning_context = PlanContext(
+                goal=goal.final_objective,
+                constraints=ctx_analysis.constraints,
+                priority=PlanPriority.HIGH if ctx_analysis.time_sensitivity == "high" else PlanPriority.NORMAL,
+                metadata={
+                    "reasoning_result_id": reasoning.result_id,
+                    "goal_id": goal.goal_id,
+                    "intent": intent.primary_intent,
+                    "domain": ctx_analysis.detected_domain,
+                },
+            )
+            
+            # تنفيذ التخطيط
+            t_pe = time.perf_counter()
+            planning_result = await self.planning_engine.execute(
+                context=planning_context,
+                steps=planning_steps,
+            )
+            
             trace.planning = {
                 "graph_id": graph.graph_id,
                 "node_count": len(graph.nodes),
                 "edge_count": len(graph.edges),
+                "planning_result_id": planning_result.result_id if hasattr(planning_result, 'result_id') else None,
+                "executed_steps": planning_result.completed_steps if hasattr(planning_result, 'completed_steps') else 0,
+                "planning_latency_ms": (time.perf_counter() - t_pe) * 1000,
                 "latency_ms": (time.perf_counter() - t6) * 1000,
+                "success": planning_result.success if hasattr(planning_result, 'success') else True,
             }
             
             # ── Step 7: Decision Engine — اختيار الموارد ───────────────────
