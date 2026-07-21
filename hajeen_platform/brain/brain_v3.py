@@ -75,6 +75,36 @@ from .sovereignty.sovereignty_layer import SovereigntyLayer, get_sovereignty_lay
 from .state_machine import StateMachine, TaskState, get_state_machine
 from .task_decomposer import TaskDecomposer, get_task_decomposer
 
+# Phase 11: Tool Reasoning
+from .tool_reasoning import (
+    ToolReasoningEngine,
+    get_tool_reasoning_engine,
+)
+
+# Phase 12: Multi-Agent System
+from .multi_agent import (
+    MultiAgentSystem,
+    get_multi_agent_system,
+)
+
+# Phase 17: Performance Optimization
+from .performance import (
+    PerformanceOptimizer,
+    get_performance_optimizer,
+)
+
+# Phase 19: Production Hardening
+from .production import (
+    ProductionComponents,
+    get_production_components,
+)
+
+# Phase 20: Cognitive Evolution
+from .cognitive_evolution import (
+    CognitiveEvolutionEngine,
+    get_cognitive_evolution_engine,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -263,6 +293,21 @@ class HajeenBrainV3:
             self.reasoning_engine: ReasoningEngine = get_reasoning_engine()
             self._is_modular_engine = False
             logger.info("Using LEGACY Reasoning Engine (fallback)")
+        
+        # ── Phase 11: Tool Reasoning ─────────────────────────────────
+        self.tool_reasoning: ToolReasoningEngine = get_tool_reasoning_engine()
+        
+        # ── Phase 12: Multi-Agent System ───────────────────────────────
+        self.multi_agent: MultiAgentSystem = get_multi_agent_system()
+        
+        # ── Phase 17: Performance Optimization ─────────────────────────
+        self.performance: PerformanceOptimizer = get_performance_optimizer()
+        
+        # ── Phase 19: Production Hardening ─────────────────────────────
+        self.production: ProductionComponents = get_production_components()
+        
+        # ── Phase 20: Cognitive Evolution ─────────────────────────────
+        self.cognitive_evolution: CognitiveEvolutionEngine = get_cognitive_evolution_engine()
         
         # تحديث Decision Engine
         self.decision_engine._performance_db = self.performance_db
@@ -781,6 +826,24 @@ class HajeenBrainV3:
                 "type": "modular_v2" if self._is_modular_engine else "legacy_v1",
                 "active": True,
                 "cache": reasoning_stats,
+            },
+            # Phase 11: Tool Reasoning
+            "tool_reasoning": {
+                "available_tools": len(self.tool_reasoning.get_available_tools()),
+                "execution_history": len(self.tool_reasoning.execution_history),
+            },
+            # Phase 12: Multi-Agent
+            "multi_agent": {
+                "agents": len(self.multi_agent.agents),
+                "agent_types": list(set(a.agent_type.value for a in self.multi_agent.agents.values())),
+            },
+            # Phase 17: Performance
+            "performance": self.performance.get_stats(),
+            # Phase 19: Production
+            "production": self.production.get_stats(),
+            # Phase 20: Cognitive Evolution
+            "cognitive_evolution": {
+                "capabilities": self.cognitive_evolution.get_capabilities(),
             },
             "stats": dict(self._stats),
             "active_requests": len(self._active_requests),
