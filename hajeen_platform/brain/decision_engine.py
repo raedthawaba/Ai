@@ -38,6 +38,40 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================
+# TRACING & METRICS
+# ============================================================
+
+# Global trace flag for debugging
+_TRACING_ENABLED = False
+_CALL_LOG = []
+
+
+def enable_tracing():
+    """Enable runtime tracing"""
+    global _TRACING_ENABLED, _CALL_LOG
+    _TRACING_ENABLED = True
+    _CALL_LOG = []
+
+
+def get_call_log():
+    """Get all traced calls"""
+    return _CALL_LOG.copy()
+
+
+def clear_call_log():
+    """Clear the call log"""
+    global _CALL_LOG
+    _CALL_LOG = []
+
+
+def _trace(component: str, action: str):
+    """Add a trace entry"""
+    if _TRACING_ENABLED:
+        import time
+        _CALL_LOG.append((component, action, time.time()))
+
+
+# ============================================================
 # PHASE 1: Foundation & Core Decision Architecture
 # ============================================================
 
@@ -173,7 +207,8 @@ class DecisionAnalyzer:
     
     async def analyze(self, context: DecisionContext) -> Dict[str, Any]:
         """تحليل شامل للسياق"""
-        return {
+        _trace("DecisionAnalyzer", "analyze:start")
+        result = {
             "context_summary": {
                 "session_id": context.session_id,
                 "message_length": len(context.user_message),
@@ -646,6 +681,57 @@ class DecisionLearner:
 
 
 # ============================================================
+# PRODUCTION UTILITIES
+# ============================================================
+
+class CircuitBreaker:
+    """Circuit Breaker for production resilience"""
+    
+    def __init__(self, failure_threshold: int = 5, timeout_seconds: float = 60.0):
+        self.failure_threshold = failure_threshold
+        self.timeout_seconds = timeout_seconds
+        self.failure_count = 0
+        self.last_failure_time = 0.0
+        self.state = "closed"  # closed, open, half-open
+    
+    def record_failure(self):
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+        if self.failure_count >= self.failure_threshold:
+            self.state = "open"
+    
+    def record_success(self):
+        self.failure_count = 0
+        self.state = "closed"
+    
+    def can_execute(self) -> bool:
+        if self.state == "closed":
+            return True
+        if self.state == "open":
+            if time.time() - self.last_failure_time > self.timeout_seconds:
+                self.state = "half-open"
+                return True
+            return False
+        return True
+
+
+class RetryPolicy:
+    """Retry policy with exponential backoff"""
+    
+    def __init__(self, max_retries: int = 3, base_delay: float = 0.1):
+        self.max_retries = max_retries
+        self.base_delay = base_delay
+    
+    def get_delay(self, attempt: int) -> float:
+        return self.base_delay * (2 ** attempt)
+    
+    def should_retry(self, attempt: int, error: Exception) -> bool:
+        if attempt >= self.max_retries:
+            return False
+        return True
+
+
+# ============================================================
 # PHASE 10: Production Decision Engine
 # ============================================================
 
@@ -669,6 +755,18 @@ class DecisionEngineV2:
         
         # التخزين المؤقت
         self._cache: Dict[str, DecisionResult] = {}
+        
+        # Production: Circuit Breaker
+        self.circuit_breaker = CircuitBreaker(
+            failure_threshold=config.max_retries if config else 3,
+            timeout_seconds=60.0
+        )
+        
+        # Production: Retry Policy
+        self.retry_policy = RetryPolicy(
+            max_retries=config.max_retries if config else 3,
+            base_delay=0.1
+        )
         
         # المقاييس
         self._metrics = {
