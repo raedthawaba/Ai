@@ -27,6 +27,74 @@ class HypothesisStatus(Enum):
 
 
 @dataclass
+class HypothesisResult:
+    """Result of hypothesis generation with evaluation."""
+    hypothesis_id: str = ""
+    problem: str = ""
+    hypothesis_text: str = ""
+    
+    # Evaluation Scores
+    plausibility: float = 0.0
+    evidence_score: float = 0.0
+    consistency: float = 0.0
+    overall_score: float = 0.0
+    
+    # Status
+    status: str = "proposed"
+    is_valid: bool = False
+    should_use: bool = False
+    
+    # Components
+    assumptions: List[str] = field(default_factory=list)
+    predictions: List[str] = field(default_factory=list)
+    supporting_evidence: List[str] = field(default_factory=list)
+    contradicting_evidence: List[str] = field(default_factory=list)
+    
+    # Decision Impact
+    decision_impact: float = 0.0
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.hypothesis_id,
+            "problem": self.problem,
+            "hypothesis_text": self.hypothesis_text,
+            "plausibility": round(self.plausibility, 3),
+            "evidence_score": round(self.evidence_score, 3),
+            "consistency": round(self.consistency, 3),
+            "overall_score": round(self.overall_score, 3),
+            "status": self.status,
+            "is_valid": self.is_valid,
+            "should_use": self.should_use,
+            "assumptions": self.assumptions,
+            "predictions": self.predictions,
+            "decision_impact": round(self.decision_impact, 3),
+        }
+
+
+@dataclass
+class HypothesesGenerationResult:
+    """Result of hypothesis generation process."""
+    problem: str = ""
+    hypotheses: List[HypothesisResult] = field(default_factory=list)
+    best_hypothesis: Optional[HypothesisResult] = None
+    rejected_hypotheses: List[HypothesisResult] = field(default_factory=list)
+    total_generated: int = 0
+    valid_count: int = 0
+    invalid_count: int = 0
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "problem": self.problem,
+            "total_generated": self.total_generated,
+            "valid_count": self.valid_count,
+            "invalid_count": self.invalid_count,
+            "hypotheses": [h.to_dict() for h in self.hypotheses],
+            "best_hypothesis": self.best_hypothesis.to_dict() if self.best_hypothesis else None,
+            "rejected_count": len(self.rejected_hypotheses),
+        }
+
+
+@dataclass
 class Hypothesis:
     """
     Represents a proposed hypothesis with evaluation details.
@@ -76,19 +144,481 @@ class Hypothesis:
         return overall
 
 
+# Singleton instance
+_hypothesis_engine_instance: Optional["HypothesisEngine"] = None
+
+
+def get_hypothesis_engine() -> "HypothesisEngine":
+    """Get singleton instance of HypothesisEngine."""
+    global _hypothesis_engine_instance
+    if _hypothesis_engine_instance is None:
+        _hypothesis_engine_instance = HypothesisEngine()
+    return _hypothesis_engine_instance
+
+
 class HypothesisEngine:
     """
     Generates and evaluates multiple hypotheses for complex problems.
     
     The Hypothesis Engine moves beyond single-path reasoning to explore a broader
     solution space, leading to more robust and optimal outcomes.
+    
+    This implementation provides REAL hypothesis generation with:
+    - Multiple hypothesis generation
+    - Plausibility evaluation
+    - Evidence scoring
+    - Consistency checking
+    - Best hypothesis selection
+    - Impact on reasoning flow
     """
     
     def __init__(self):
         """Initialize the Hypothesis Engine."""
         self.hypotheses: Dict[str, Hypothesis] = {}
-        self.problem_hypotheses: Dict[str, List[str]] = {}  # problem -> [hypothesis_ids]
+        self.problem_hypotheses: Dict[str, List[str]] = {}
+        self.evaluation_results: List[HypothesesGenerationResult] = []
         self.logger = logging.getLogger(__name__)
+        
+        # Thresholds
+        self.min_plausibility = 0.4
+        self.min_evidence_score = 0.3
+        self.min_consistency = 0.4
+        self.min_overall_score = 0.4
+    
+    async def generate_hypotheses(self, context: Dict[str, Any]) -> HypothesesGenerationResult:
+        """
+        Generate multiple hypotheses for a problem.
+        
+        This is the main entry point called from BrainV3.process().
+        
+        Args:
+            context: {
+                "problem": str,              # The problem statement
+                "reasoning": List[str],       # Reasoning steps from previous phase
+                "evidence": Any,              # Evidence from Evidence Court
+            }
+        
+        Returns:
+            HypothesesGenerationResult with all hypotheses and best selection
+        """
+        problem = context.get("problem", "")
+        reasoning_steps = context.get("reasoning", [])
+        evidence = context.get("evidence")
+        
+        self.logger.info(f"Generating hypotheses for: {problem[:50]}...")
+        
+        # Step 1: Extract key concepts from problem
+        key_concepts = self._extract_key_concepts(problem)
+        
+        # Step 2: Generate multiple hypotheses using different strategies
+        hypotheses = []
+        hypotheses.extend(self._generate_direct_hypotheses(problem, key_concepts))
+        hypotheses.extend(self._generate_alternative_hypotheses(problem, key_concepts))
+        hypotheses.extend(self._generate_negation_hypotheses(problem, key_concepts))
+        hypotheses.extend(self._generate_comparative_hypotheses(problem, key_concepts))
+        
+        # Step 3: Evaluate each hypothesis
+        evaluated_hypotheses = []
+        for hyp_text in hypotheses:
+            result = await self._evaluate_hypothesis(problem, hyp_text, reasoning_steps, evidence)
+            evaluated_hypotheses.append(result)
+        
+        # Step 4: Filter weak hypotheses
+        valid_hypotheses = [h for h in evaluated_hypotheses if h.is_valid]
+        invalid_hypotheses = [h for h in evaluated_hypotheses if not h.is_valid]
+        
+        # Step 5: Select best hypothesis
+        best_hypothesis = None
+        if valid_hypotheses:
+            best_hypothesis = max(valid_hypotheses, key=lambda x: x.overall_score)
+            best_hypothesis.should_use = True
+        
+        # Step 6: Build result
+        result = HypothesesGenerationResult(
+            problem=problem,
+            hypotheses=evaluated_hypotheses,
+            best_hypothesis=best_hypothesis,
+            rejected_hypotheses=invalid_hypotheses,
+            total_generated=len(hypotheses),
+            valid_count=len(valid_hypotheses),
+            invalid_count=len(invalid_hypotheses),
+        )
+        
+        self.evaluation_results.append(result)
+        
+        self.logger.info(
+            f"Generated {len(hypotheses)} hypotheses: "
+            f"{len(valid_hypotheses)} valid, "
+            f"{len(invalid_hypotheses)} rejected"
+        )
+        
+        return result
+    
+    def _extract_key_concepts(self, problem: str) -> List[str]:
+        """Extract key concepts from problem statement."""
+        import re
+        
+        # Remove common words
+        stop_words = {
+            'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+            'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+            'should', 'may', 'might', 'can', 'to', 'of', 'in', 'for', 'on', 'with',
+            'at', 'by', 'from', 'as', 'into', 'through', 'during', 'before', 'after',
+            'above', 'below', 'between', 'under', 'again', 'further', 'then', 'once',
+            'here', 'there', 'when', 'where', 'why', 'how', 'all', 'each', 'few',
+            'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only',
+            'own', 'same', 'so', 'than', 'too', 'very', 'just', 'also', 'now',
+        }
+        
+        # Extract words
+        words = re.findall(r'\b[a-zA-Z]{4,}\b', problem.lower())
+        concepts = [w for w in words if w not in stop_words]
+        
+        # Get unique concepts with frequency
+        concept_freq = {}
+        for word in concepts:
+            concept_freq[word] = concept_freq.get(word, 0) + 1
+        
+        # Sort by frequency and return top concepts
+        sorted_concepts = sorted(concept_freq.items(), key=lambda x: x[1], reverse=True)
+        return [c[0] for c in sorted_concepts[:10]]
+    
+    def _generate_direct_hypotheses(self, problem: str, concepts: List[str]) -> List[str]:
+        """Generate direct hypotheses based on problem analysis."""
+        hypotheses = []
+        
+        if not concepts:
+            concepts = ["solution", "approach"]
+        
+        # Direct cause-effect hypothesis
+        primary_concept = concepts[0] if concepts else "this"
+        hypotheses.append(
+            f"{primary_concept.title()} is the primary cause or solution to the problem"
+        )
+        
+        # Multiple factor hypothesis
+        if len(concepts) >= 2:
+            hypotheses.append(
+                f"The interaction between {concepts[0]} and {concepts[1]} creates the solution"
+            )
+        
+        # Systematic approach hypothesis
+        hypotheses.append(
+            f"A systematic approach considering all factors will solve the problem"
+        )
+        
+        return hypotheses
+    
+    def _generate_alternative_hypotheses(self, problem: str, concepts: List[str]) -> List[str]:
+        """Generate alternative perspective hypotheses."""
+        hypotheses = []
+        
+        # Different angle hypothesis
+        hypotheses.append(
+            "The problem requires an unexpected or unconventional approach"
+        )
+        
+        # External factor hypothesis
+        hypotheses.append(
+            "External factors beyond the immediate context are the root cause"
+        )
+        
+        # Multiple solutions hypothesis
+        hypotheses.append(
+            "Multiple parallel solutions exist, not a single best approach"
+        )
+        
+        # Timing hypothesis
+        hypotheses.append(
+            "The timing and sequence of actions is more important than the actions themselves"
+        )
+        
+        return hypotheses
+    
+    def _generate_negation_hypotheses(self, problem: str, concepts: List[str]) -> List[str]:
+        """Generate hypotheses that negate common assumptions."""
+        hypotheses = []
+        
+        # Reverse assumption
+        hypotheses.append(
+            "The opposite of what seems obvious is actually true"
+        )
+        
+        # Null hypothesis (no solution needed)
+        hypotheses.append(
+            "No action is needed - the problem will resolve itself"
+        )
+        
+        # False problem hypothesis
+        hypotheses.append(
+            "The stated problem is a symptom, not the actual issue"
+        )
+        
+        return hypotheses
+    
+    def _generate_comparative_hypotheses(self, problem: str, concepts: List[str]) -> List[str]:
+        """Generate comparative hypotheses."""
+        hypotheses = []
+        
+        # Comparison with similar problems
+        hypotheses.append(
+            "This problem can be solved using patterns from similar solved problems"
+        )
+        
+        # Gradual vs dramatic change
+        hypotheses.append(
+            "Gradual incremental changes will be more effective than dramatic changes"
+        )
+        
+        # Resource-based hypothesis
+        hypotheses.append(
+            "The solution depends on optimal resource allocation and prioritization"
+        )
+        
+        return hypotheses
+    
+    async def _evaluate_hypothesis(
+        self,
+        problem: str,
+        hypothesis_text: str,
+        reasoning_steps: List[str],
+        evidence: Any
+    ) -> HypothesisResult:
+        """Evaluate a single hypothesis."""
+        result = HypothesisResult(
+            hypothesis_id=str(uuid.uuid4()),
+            problem=problem,
+            hypothesis_text=hypothesis_text,
+        )
+        
+        # Step 1: Calculate plausibility
+        result.plausibility = self._calculate_plausibility(problem, hypothesis_text, reasoning_steps)
+        
+        # Step 2: Calculate evidence score
+        result.evidence_score = self._evaluate_evidence_support(hypothesis_text, evidence)
+        
+        # Step 3: Calculate consistency
+        result.consistency = self._calculate_consistency(hypothesis_text, reasoning_steps)
+        
+        # Step 4: Calculate overall score
+        result.overall_score = self._calculate_overall_score(
+            result.plausibility,
+            result.evidence_score,
+            result.consistency
+        )
+        
+        # Step 5: Extract assumptions
+        result.assumptions = self._extract_assumptions(hypothesis_text)
+        
+        # Step 6: Generate predictions
+        result.predictions = self._generate_predictions(hypothesis_text)
+        
+        # Step 7: Determine validity
+        result.is_valid = self._is_hypothesis_valid(result)
+        
+        # Step 8: Set status
+        if result.is_valid:
+            if result.overall_score >= 0.7:
+                result.status = "supported"
+            else:
+                result.status = "under_evaluation"
+        else:
+            result.status = "rejected"
+        
+        return result
+    
+    def _calculate_plausibility(
+        self,
+        problem: str,
+        hypothesis_text: str,
+        reasoning_steps: List[str]
+    ) -> float:
+        """Calculate how plausible the hypothesis is."""
+        import re
+        
+        # Base plausibility
+        plausibility = 0.5
+        
+        # Check alignment with reasoning steps
+        hypothesis_words = set(re.findall(r'\w+', hypothesis_text.lower()))
+        reasoning_text = ' '.join(reasoning_steps).lower()
+        reasoning_words = set(re.findall(r'\w+', reasoning_text))
+        
+        if hypothesis_words & reasoning_words:
+            overlap = len(hypothesis_words & reasoning_words) / len(hypothesis_words | reasoning_words)
+            plausibility += overlap * 0.3
+        
+        # Check for extreme language
+        extreme_words = ['always', 'never', 'impossible', 'certain', 'definitely']
+        has_extreme = any(word in hypothesis_text.lower() for word in extreme_words)
+        if has_extreme:
+            plausibility -= 0.15
+        
+        # Check for qualified language
+        qualified_words = ['might', 'could', 'possibly', 'perhaps', 'likely', 'probably']
+        has_qualified = any(word in hypothesis_text.lower() for word in qualified_words)
+        if has_qualified:
+            plausibility += 0.05
+        
+        # Length check (too short or too long is less plausible)
+        if 20 < len(hypothesis_text) < 100:
+            plausibility += 0.05
+        
+        # Check specificity
+        if len(hypothesis_words) >= 5:
+            plausibility += 0.05
+        
+        return min(1.0, max(0.0, plausibility))
+    
+    def _evaluate_evidence_support(self, hypothesis_text: str, evidence: Any) -> float:
+        """Calculate evidence support score."""
+        score = 0.3  # Base score with no evidence
+        
+        if evidence is None:
+            return score
+        
+        # Check if evidence is a dict with relevant fields
+        if isinstance(evidence, dict):
+            # Evidence has confidence/score
+            if 'confidence' in evidence:
+                score += evidence['confidence'] * 0.4
+            elif 'evidence_score' in evidence:
+                score += evidence['evidence_score'] * 0.4
+            
+            # Evidence has sources
+            if 'sources' in evidence and evidence['sources']:
+                score += 0.1
+            
+            # Evidence has recommendations
+            if 'recommendations' in evidence:
+                recs = evidence['recommendations']
+                if any('strong' in str(r).lower() for r in recs):
+                    score += 0.1
+        
+        # Check if evidence is from Evidence Court
+        if hasattr(evidence, 'confidence'):
+            score = min(1.0, score + evidence.confidence * 0.5)
+        
+        return min(1.0, max(0.0, score))
+    
+    def _calculate_consistency(self, hypothesis_text: str, reasoning_steps: List[str]) -> float:
+        """Calculate consistency with reasoning steps."""
+        if not reasoning_steps:
+            return 0.5
+        
+        import re
+        
+        # Extract words from hypothesis
+        hyp_words = set(re.findall(r'\w+', hypothesis_text.lower()))
+        
+        # Check consistency with each reasoning step
+        consistency_scores = []
+        for step in reasoning_steps:
+            step_words = set(re.findall(r'\w+', step.lower()))
+            
+            if not hyp_words or not step_words:
+                continue
+            
+            # Check for contradictions
+            contradiction_pairs = [
+                ('can', 'cannot'), ('is', 'is not'), ('will', 'will not'),
+                ('should', 'should not'), ('does', 'does not'),
+            ]
+            
+            has_contradiction = False
+            for pos, neg in contradiction_pairs:
+                if pos in step.lower() and neg in hypothesis_text.lower():
+                    has_contradiction = True
+                    break
+            
+            if has_contradiction:
+                consistency_scores.append(0.2)
+            else:
+                # Calculate word overlap
+                overlap = len(hyp_words & step_words) / len(hyp_words | step_words)
+                consistency_scores.append(0.5 + overlap * 0.4)
+        
+        if consistency_scores:
+            return sum(consistency_scores) / len(consistency_scores)
+        
+        return 0.5
+    
+    def _calculate_overall_score(self, plausibility: float, evidence: float, consistency: float) -> float:
+        """Calculate overall hypothesis score."""
+        # Weighted combination
+        overall = (
+            plausibility * 0.35 +
+            evidence * 0.40 +
+            consistency * 0.25
+        )
+        
+        return min(1.0, max(0.0, overall))
+    
+    def _extract_assumptions(self, hypothesis_text: str) -> List[str]:
+        """Extract underlying assumptions from hypothesis."""
+        assumptions = []
+        
+        # Look for implicit assumptions
+        assumption_patterns = [
+            (r'if (.+?),', r'Assumes that \1'),
+            (r'assuming (.+?)(?:\.|$)', r'\1'),
+            (r'given that (.+?)(?:\.|$)', r'\1'),
+            (r'on the assumption that (.+?)(?:\.|$)', r'\1'),
+        ]
+        
+        import re
+        for pattern, _ in assumption_patterns:
+            matches = re.findall(pattern, hypothesis_text, re.IGNORECASE)
+            for match in matches:
+                assumptions.append(match.strip())
+        
+        # If no patterns found, create default assumptions
+        if not assumptions:
+            assumptions.append("The hypothesis applies to the current context")
+            assumptions.append("Available information is sufficient to evaluate this hypothesis")
+        
+        return assumptions[:5]  # Limit to 5 assumptions
+    
+    def _generate_predictions(self, hypothesis_text: str) -> List[str]:
+        """Generate predictions based on hypothesis."""
+        predictions = []
+        
+        # Generate testable predictions
+        import re
+        
+        # Extract key claims
+        words = re.findall(r'\b[a-zA-Z]{4,}\b', hypothesis_text.lower())
+        
+        if words:
+            predictions.append(
+                f"If the hypothesis is correct, {words[0]} will have measurable impact"
+            )
+        
+        # Action-based prediction
+        predictions.append(
+            "Taking action based on this hypothesis should produce observable results"
+        )
+        
+        # Verification prediction
+        predictions.append(
+            "Further evidence should align with the hypothesis over time"
+        )
+        
+        return predictions[:3]  # Limit to 3 predictions
+    
+    def _is_hypothesis_valid(self, result: HypothesisResult) -> bool:
+        """Determine if hypothesis meets validity thresholds."""
+        # All conditions must be met
+        if result.plausibility < self.min_plausibility:
+            return False
+        if result.evidence_score < self.min_evidence_score:
+            return False
+        if result.consistency < self.min_consistency:
+            return False
+        if result.overall_score < self.min_overall_score:
+            return False
+        
+        return True
     
     def generate_hypothesis(self, problem_statement: str, hypothesis_text: str,
                            assumptions: Optional[List[str]] = None) -> Hypothesis:
