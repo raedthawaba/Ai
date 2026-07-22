@@ -1,10 +1,13 @@
 """
-Load Tests — Brain V3 (Phase 19)
+Load Tests — Brain (Phase 19)
 =================================
 يختبر قدرة النظام على تحمّل الحمل العالي:
 - معالجة طلبات متعددة بالتوازي
 - قياس زمن الاستجابة تحت الضغط
 - التحقق من عدم تسرب الذاكرة
+
+NOTE: This test file imports from archived brain_v3.
+Update to use official HajeenBrain from hajeen_brain.py
 """
 from __future__ import annotations
 
@@ -19,13 +22,13 @@ import pytest
 def _skip_if_no_brain():
     """تخطي الاختبار إن لم تكن المكونات متاحة."""
     try:
-        from hajeen_platform.brain.brain_v3 import HajeenBrainV3
+        from hajeen_platform.brain.hajeen_brain import HajeenBrain
         return False
     except ImportError:
         return True
 
 
-@pytest.mark.skipif(_skip_if_no_brain(), reason="Brain V3 not available in this environment")
+@pytest.mark.skipif(_skip_if_no_brain(), reason="Brain not available in this environment")
 class TestBrainLoadHandling:
     """اختبارات الحمل."""
 
@@ -42,9 +45,9 @@ class TestBrainLoadHandling:
         async def single_request(i: int):
             t0 = time.perf_counter()
             try:
-                from hajeen_platform.brain.brain_v3 import BrainRequest
+                from hajeen_platform.brain.hajeen_brain import HajeenBrain
+                from hajeen_platform.brain.contracts import BrainRequest
                 req = BrainRequest(
-                    request_id=str(uuid.uuid4()),
                     user_message=f"طلب المستخدم {i}: ما هو الذكاء الاصطناعي؟",
                     session_id=f"session_{i}",
                 )
@@ -73,11 +76,10 @@ class TestBrainLoadHandling:
         """قياس معدل الطلبات في الثانية."""
         N = 20
         t0 = time.perf_counter()
-        from hajeen_platform.brain.brain_v3 import BrainRequest
+        from hajeen_platform.brain.contracts import BrainRequest
 
         async def req():
             r = BrainRequest(
-                request_id=str(uuid.uuid4()),
                 user_message="طلب معياري للاختبار",
                 session_id=f"s_{uuid.uuid4().hex[:8]}",
             )
