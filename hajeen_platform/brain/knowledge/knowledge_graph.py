@@ -197,19 +197,74 @@ class KnowledgeGraph:
         return result
 
     def search_nodes(self, query: str, category: Optional[NodeCategory] = None, top_k: int = 10) -> List[KGNode]:
+        """Search for knowledge nodes by query string."""
         query_lower = query.lower()
-        results = []
-        for node in self._nodes.values():
+        scored = []
+        
+        for node_id, node in self._nodes.items():
             if category and node.category != category:
                 continue
+            
+            # Score by name and properties match
             name_match = query_lower in node.name.lower()
-            prop_match = any(
-                query_lower in str(v).lower()
-                for v in node.properties.values()
-            )
-            if name_match or prop_match:
-                results.append(node)
-        return results[:top_k]
+            # Check properties for description
+            props_str = str(node.properties).lower()
+            desc_match = query_lower in props_str
+            
+            if name_match or desc_match:
+                score = 1.0 if name_match else 0.5
+                scored.append((score, node))
+        
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [node for _, node in scored[:top_k]]
+
+    # ── Knowledge Query (Phase 2) ─────────────────────────────────────────
+    async def query(
+        self, 
+        query: str, 
+        domain: Optional[str] = None,
+        limit: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Query knowledge graph for relevant information.
+        This is used for early knowledge retrieval before Reasoning.
+        
+        Args:
+            query: The query string
+            domain: Optional domain filter
+            limit: Maximum number of results
+            
+        Returns:
+            List of knowledge items with relevance scores
+        """
+        results = []
+        
+        # Search for matching nodes
+        nodes = self.search_nodes(query, top_k=limit * 2)
+        
+        for node in nodes:
+            # Get neighbors for context
+            neighbors = self.get_neighbors(node.node_id)
+            
+            # Extract description from properties if available
+            description = node.properties.get("description", str(node.properties))
+            
+            results.append({
+                "type": "knowledge",
+                "name": node.name,
+                "category": node.category.value if hasattr(node.category, 'value') else str(node.category),
+                "description": description,
+                "properties": node.properties,
+                "neighbors": [
+                    {"name": n.name, "relation": "related"}
+                    for n in neighbors[:3]
+                ],
+                "relevance": 0.8 if query.lower() in node.name.lower() else 0.5,
+            })
+        
+        # Sort by relevance
+        results.sort(key=lambda x: x["relevance"], reverse=True)
+        return results[:limit]
 
     def add_knowledge(
         self, subject: str, predicate: RelationType,

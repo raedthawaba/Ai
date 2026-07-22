@@ -345,6 +345,58 @@ class MemoryFabric:
     def search_semantic(self, query: str, top_k: int = 5) -> List[MemoryEntry]:
         return self._semantic.search(query, top_k)
 
+    # ── Memory Retrieval (Phase 2) ────────────────────────────────────────
+    def get_relevant_memories(
+        self, 
+        session_id: str, 
+        query: str, 
+        limit: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Get relevant memories for a query from multiple memory types.
+        This is used for early memory retrieval before Reasoning.
+        """
+        results = []
+        
+        # 1. Semantic memory search
+        semantic_results = self._semantic.search(query, top_k=limit)
+        for entry in semantic_results:
+            results.append({
+                "type": "semantic",
+                "content": entry.content,
+                "relevance": entry.relevance_score,
+                "entry_id": entry.entry_id,
+            })
+        
+        # 2. Recent conversation context
+        if session_id in self._conversations:
+            conv = self._conversations[session_id]
+            recent = conv.get_window()
+            if recent:
+                results.append({
+                    "type": "conversation",
+                    "content": conv.get_summary_context(),
+                    "relevance": 0.7,
+                    "entry_id": f"conv_{session_id}",
+                })
+        
+        # 3. Long-term memory recall (check for key matches)
+        query_words = set(query.lower().split())
+        for key in self._long_term.list_keys():
+            if any(word in key.lower() for word in query_words):
+                value = self._long_term.recall(key)
+                if value:
+                    results.append({
+                        "type": "long_term",
+                        "content": str(value),
+                        "relevance": 0.6,
+                        "entry_id": key,
+                    })
+        
+        # Sort by relevance and limit
+        results.sort(key=lambda x: x["relevance"], reverse=True)
+        return results[:limit]
+
     # ── Episodic Memory ────────────────────────────────────────────────────
     def record_episode(self, event_type: str, description: str, outcome: str) -> None:
         self._episodic.record(event_type, description, outcome)
