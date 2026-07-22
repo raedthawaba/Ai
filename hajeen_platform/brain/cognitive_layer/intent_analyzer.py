@@ -221,14 +221,30 @@ class IntentAnalyzer:
 
 # Singleton
 _intent_analyzer: Optional[IntentAnalyzer] = None
+_intent_analyzer_lock = None
 
 
 def get_intent_analyzer(llm_manager: Optional[LLMManager] = None) -> IntentAnalyzer:
-    """الحصول على instance من IntentAnalyzer."""
-    global _intent_analyzer
+    """الحصول على instance من IntentAnalyzer (sync wrapper)."""
+    global _intent_analyzer, _intent_analyzer_lock
+    
     if _intent_analyzer is None:
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+        
         if llm_manager is None:
             from hajeen_platform.core.llm import get_llm_manager
-            llm_manager = get_llm_manager()
+            result = get_llm_manager()
+            
+            # Check if it's a coroutine
+            import inspect
+            if inspect.iscoroutine(result):
+                # Run in a new event loop
+                with ThreadPoolExecutor() as executor:
+                    llm_manager = executor.submit(asyncio.run, result).result()
+            else:
+                llm_manager = result
+        
         _intent_analyzer = IntentAnalyzer(llm_manager)
+    
     return _intent_analyzer

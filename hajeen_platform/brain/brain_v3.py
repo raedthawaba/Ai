@@ -341,7 +341,7 @@ class HajeenBrainV3:
             )
             trace.planning = {
                 "success": planning_result.success,
-                "goal_id": planning_result.planning_result.goal.goal_id if planning_result.goal else None,
+                "goal_id": planning_result.goal.goal_id if planning_result.goal else None,
                 "plan_id": planning_result.plan.plan_id if planning_result.plan else None,
                 "tasks": len(planning_result.plan.tasks) if planning_result.plan else 0,
                 "graph_nodes": len(planning_result.graph.nodes) if planning_result.graph else 0,
@@ -403,6 +403,7 @@ class HajeenBrainV3:
             
             # ── Step 5: Task Decomposer — تفكيك إلى مهام ───────────────────
             t5 = time.perf_counter()
+            goal = planning_result.goal  # Extract goal from planning result
             plan = await self.task_decomposer.decompose(goal)
             trace.decomposition = {
                 "plan_id": plan.plan_id,

@@ -100,8 +100,11 @@ class RetryStrategy(str, Enum):
     """Retry strategies"""
     NONE = "none"
     EXPONENTIAL = "exponential"
+    EXPONENTIAL_BACKOFF = "exponential_backoff"
     LINEAR = "linear"
+    LINEAR_BACKOFF = "linear_backoff"
     FIBONACCI = "fibonacci"
+    ADAPTIVE = "adaptive"
 
 
 # ============================================================
@@ -908,12 +911,142 @@ class DecisionEngineV2:
             "success_rate": self._metrics["success"] / max(1, self._metrics["total"]),
         }
 
+    # ============================================================
+    # LEGACY API COMPATIBILITY (for brain_v3.py)
+    # ============================================================
+    
+    async def decide_legacy(
+        self,
+        task_id: str,
+        goal: Any,
+        task_name: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> "DecisionLegacy":
+        """
+        Legacy API for backward compatibility with brain_v3.py.
+        
+        Args:
+            task_id: معرف المهمة
+            goal: الهدف
+            task_name: اسم المهمة
+            context: سياق إضافي
+            
+        Returns:
+            DecisionLegacy: قرار متوافق مع الـ API القديم
+        """
+        # Create DecisionContext from legacy parameters
+        decision_context = DecisionContext(
+            request_id=task_id,
+            user_message=task_name,
+            session_id="legacy-session",
+            goal_id=str(goal.goal_id) if hasattr(goal, 'goal_id') else task_id,
+            task_count=getattr(goal, 'task_count', 1),
+            constraints=context or {},
+        )
+        
+        # Determine decision type
+        if context and context.get("force_model"):
+            decision_type = DecisionType.MODEL_SELECTION
+        else:
+            decision_type = DecisionType.EXECUTION_STRATEGY
+        
+        # Call the original NEW decide method via decide_new
+        # This is set after the class definition to avoid circular reference
+        result = await DecisionEngineV2.decide_new(
+            self,
+            context=decision_context,
+            decision_type=decision_type,
+            require_simulation=False,
+            require_validation=False,
+        )
+        
+        # Convert to legacy Decision format
+        if result.selected_candidate:
+            candidate = result.selected_candidate
+            return DecisionLegacy(
+                task_id=task_id,
+                resource_type=ResourceType.CLOUD_MODEL,
+                primary_model=str(candidate.choice),
+                fallback_model=None,
+                use_rag=False,
+                use_web=False,
+                use_multi_model=False,
+                collaborating_models=[],
+                estimated_cost_tokens=candidate.estimated_tokens,
+                confidence=candidate.confidence_score,
+                reasoning="; ".join(candidate.reasons),
+                metadata=candidate.evidence,
+                decided_at=time.time(),
+            )
+        
+        # Default fallback
+        return DecisionLegacy(
+            task_id=task_id,
+            resource_type=ResourceType.CLOUD_MODEL,
+            primary_model="gpt-4o",
+            fallback_model="gpt-4o-mini",
+            use_rag=False,
+            use_web=False,
+            use_multi_model=False,
+            collaborating_models=[],
+            estimated_cost_tokens=1000,
+            confidence=0.5,
+            reasoning="Fallback decision",
+            metadata={},
+            decided_at=time.time(),
+        )
+
+
+# After class definition, alias decide to legacy for backward compatibility
+# Save original decide method first, then replace with legacy
+_original_decide = DecisionEngineV2.decide
+DecisionEngineV2.decide_legacy = DecisionEngineV2.decide_legacy
+DecisionEngineV2.decide_new = _original_decide
+
+# Replace decide with legacy for backward compatibility with brain_v3
+DecisionEngineV2.decide = DecisionEngineV2.decide_legacy
+
 
 # ============================================================
-# Backward Compatibility
+# LEGACY DECISION CLASS
 # ============================================================
 
-# Alias for old API
+@dataclass
+class DecisionLegacy:
+    """قرار الـ Decision Engine لمهمة معينة (Legacy API)."""
+    task_id: str
+    resource_type: ResourceType
+    primary_model: str
+    fallback_model: Optional[str]
+    use_rag: bool
+    use_web: bool
+    use_multi_model: bool
+    collaborating_models: List[str]
+    estimated_cost_tokens: int
+    confidence: float
+    reasoning: str
+    metadata: Dict[str, Any]
+    decided_at: float
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "task_id": self.task_id,
+            "resource_type": self.resource_type.value if isinstance(self.resource_type, Enum) else self.resource_type,
+            "primary_model": self.primary_model,
+            "fallback_model": self.fallback_model,
+            "use_rag": self.use_rag,
+            "use_web": self.use_web,
+            "use_multi_model": self.use_multi_model,
+            "collaborating_models": self.collaborating_models,
+            "estimated_cost_tokens": self.estimated_cost_tokens,
+            "confidence": self.confidence,
+            "reasoning": self.reasoning,
+            "metadata": self.metadata,
+            "decided_at": self.decided_at,
+        }
+
+
+# Backward Compatibility Alias
 DecisionEngine = DecisionEngineV2
 
 

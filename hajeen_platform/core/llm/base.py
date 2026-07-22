@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import time
 from abc import ABC, abstractmethod
+from datetime import datetime, timedelta
 from aiobreaker import CircuitBreaker, CircuitBreakerError
 from tenacity import retry, stop_after_attempt, wait_fixed, wait_exponential, retry_if_exception_type
 from dataclasses import dataclass, field
@@ -125,8 +126,8 @@ class BaseLLMProvider(ABC):
         self._initialized = False
         self._circuit_breaker = CircuitBreaker(
             fail_max=self.config.circuit_breaker_fail_max,
-            reset_timeout=self.config.circuit_breaker_reset_timeout,
-            exclude=[LLMError] # Exclude our custom LLMError from tripping the breaker immediately
+            timeout_duration=timedelta(seconds=self.config.circuit_breaker_reset_timeout),
+            exclude=[LLMError]  # Exclude our custom LLMError from tripping the breaker immediately
         )
 
     @property
