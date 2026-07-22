@@ -32,7 +32,13 @@ from ..execution_trace import (
     TraceLevel,
 )
 from ..metrics_engine import MetricsCollector, get_metrics_collector
-from hajeen_platform.core.llm import LLMManager
+from hajeen_platform.brain.core.runtime_config import get_llm_manager
+
+# Try to import real LLM, fall back to mock
+try:
+    from hajeen_platform.core.llm import LLMManager
+except ImportError:
+    LLMManager = None
 
 logger = structlog.get_logger(__name__)
 
@@ -154,16 +160,19 @@ class ReasoningEngine:
     - مقاييس موحدة
     - معالجة أخطاء متقدمة
     - تخزين مؤقت
+    
+    يمكن استخدام Mock LLM عند عدم توفر API key حقيقي.
     """
 
     def __init__(
         self,
-        llm_manager: LLMManager,
+        llm_manager: Optional[LLMManager] = None,
         config: Optional[ReasoningEngineConfig] = None,
         trace_manager: Optional[ExecutionTraceManager] = None,
         metrics_collector: Optional[MetricsCollector] = None,
     ) -> None:
-        self.llm_manager = llm_manager
+        # Use provided manager or fall back to mock
+        self.llm_manager = llm_manager if llm_manager is not None else get_llm_manager()
         self.config = config or get_default_config()
         self.trace_manager = trace_manager or ExecutionTraceManager(
             enabled=self.config.execution_trace.enabled,

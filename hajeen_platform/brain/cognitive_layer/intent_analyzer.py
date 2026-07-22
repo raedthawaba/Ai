@@ -22,7 +22,13 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from hajeen_platform.core.llm import LLMManager
+# Try to import real LLM, fall back to mock
+try:
+    from hajeen_platform.core.llm import LLMManager
+except ImportError:
+    LLMManager = None
+
+from hajeen_platform.brain.core.runtime_config import get_llm_manager
 
 logger = logging.getLogger(__name__)
 
@@ -74,12 +80,18 @@ class IntentAnalyzer:
     محلّل النية باستخدام الاستدلال العميق.
     
     لا يعتمد على مطابقة الكلمات المفتاحية، بل على فهم اللغة الطبيعية.
+    
+    يمكن استخدام Mock LLM عند عدم توفر API key حقيقي.
     """
 
-    def __init__(self, llm_manager: LLMManager) -> None:
-        self.llm_manager = llm_manager
+    def __init__(self, llm_manager: Optional[LLMManager] = None) -> None:
+        if llm_manager is not None:
+            self.llm_manager = llm_manager
+        else:
+            # Use mock LLM if no manager provided
+            self.llm_manager = get_llm_manager()
         self._intents_cache: Dict[str, Intent] = {}
-        logger.info("IntentAnalyzer: initialized")
+        logger.info("IntentAnalyzer: initialized (using mock fallback if needed)")
 
     async def analyze(self, user_message: str, context: Optional[Dict[str, Any]] = None) -> Intent:
         """

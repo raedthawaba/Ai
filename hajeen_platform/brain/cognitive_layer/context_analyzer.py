@@ -11,6 +11,8 @@ Context Analyzer — محلّل السياق المتقدم
 - الأولويات والتفضيلات
 
 يستخدم استدلالاً عميقاً وليس مطابقة بسيطة.
+
+يمكن استخدام Mock LLM/Embedding عند عدم توفر API keys حقيقية.
 """
 
 from __future__ import annotations
@@ -23,8 +25,18 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from hajeen_platform.brain.memory.memory_fabric import MemoryFabric
-from hajeen_platform.core.embeddings import EmbeddingManager
-from hajeen_platform.core.llm import LLMManager
+from hajeen_platform.brain.core.runtime_config import get_llm_manager, get_embedding_manager
+
+# Try to import real managers, fall back to mock
+try:
+    from hajeen_platform.core.embeddings import EmbeddingManager
+except ImportError:
+    EmbeddingManager = None
+
+try:
+    from hajeen_platform.core.llm import LLMManager
+except ImportError:
+    LLMManager = None
 
 logger = logging.getLogger(__name__)
 
@@ -95,19 +107,25 @@ class ContextAnalyzer:
     - LLM للاستدلال العميق
     - Embeddings للبحث الدلالي
     - Memory Fabric للوصول إلى الذاكرة
+    
+    يمكن استخدام Mock LLM/Embedding عند عدم توفر API keys حقيقية.
     """
 
     def __init__(
         self,
-        llm_manager: LLMManager,
-        embedding_manager: EmbeddingManager,
-        memory_fabric: MemoryFabric,
+        llm_manager: Optional[LLMManager] = None,
+        embedding_manager: Optional[EmbeddingManager] = None,
+        memory_fabric: Optional[MemoryFabric] = None,
     ) -> None:
-        self.llm_manager = llm_manager
-        self.embedding_manager = embedding_manager
-        self.memory_fabric = memory_fabric
+        # Import get_memory_fabric here to avoid circular import
+        from hajeen_platform.brain.memory.memory_fabric import get_memory_fabric
+        
+        # Use provided managers or fall back to mock/runtime
+        self.llm_manager = llm_manager if llm_manager is not None else get_llm_manager()
+        self.embedding_manager = embedding_manager if embedding_manager is not None else get_embedding_manager()
+        self.memory_fabric = memory_fabric if memory_fabric is not None else get_memory_fabric()
         self._analyses_cache: Dict[str, ContextAnalysis] = {}
-        logger.info("ContextAnalyzer: initialized")
+        logger.info("ContextAnalyzer: initialized (using mock fallback if needed)")
 
     async def analyze(
         self,
