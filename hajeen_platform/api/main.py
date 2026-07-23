@@ -79,10 +79,16 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:8080",
+        "https://hajeen.ai",
+        "https://app.hajeen.ai",
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-Session-ID"],
 )
 
 
@@ -424,6 +430,17 @@ async def on_startup():
             logger.info("startup: PostgreSQL جاهز ✓")
     except Exception as exc:
         logger.warning("startup: PostgreSQL غير متاح — %s", exc)
+
+
+    # 11. تهيئة HajeenBrain V3 — العقل الموحّد
+    try:
+        from brain import get_brain
+        brain = await get_brain()
+        app.state.brain = brain
+        logger.info("startup: HajeenBrainV3 v%s جاهز ✓", getattr(brain, 'VERSION', 'unknown'))
+    except Exception as exc:
+        logger.error("startup: فشل تهيئة HajeenBrainV3 — %s", exc)
+        # Brain failure is critical but don't crash — lazy init will retry on first request
 
     logger.info("Hajeen AI Platform v1.1.0 — جاهز بالكامل ✅")
 
