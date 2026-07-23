@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
+from .base import AbstractPromptBuilder, BuiltPrompt
+
 from .templates import TemplateRegistry
 from .system_prompts import SystemPromptLibrary
 from .conversation_formatter import ConversationFormatter, Message, MessageRole
@@ -10,7 +12,7 @@ from .conversation_formatter import ConversationFormatter, Message, MessageRole
 logger = logging.getLogger(__name__)
 
 
-class PromptBuilder:
+class PromptBuilder(AbstractPromptBuilder):
     """High-level builder that assembles complete prompts from components."""
 
     def __init__(
@@ -24,7 +26,11 @@ class PromptBuilder:
         self.max_context_tokens = max_context_tokens
         self._formatter = ConversationFormatter()
 
-    def build_chat(
+        def build(self, user_input: str, **kwargs: Any) -> BuiltPrompt:
+        """Build a basic prompt (delegates to build_chat)."""
+        return self.build_chat(user_input, **kwargs)
+
+def build_chat(
         self,
         user_message: str,
         history: Optional[List[Message]] = None,
