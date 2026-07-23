@@ -45,7 +45,7 @@ class BuiltPrompt:
         )
 
 
-class PromptBuilder:
+class PromptBuilder(AbstractPromptBuilder):
     """
     بناء prompts احترافية متكاملة.
 
@@ -71,7 +71,11 @@ class PromptBuilder:
         self.validator = validator or PromptValidator()
         self.max_history = max_history_messages
 
-    def build_rag_prompt(
+        def build(self, user_input: str, **kwargs: Any) -> BuiltPrompt:
+        """Build a prompt (delegates to build_chat_prompt)."""
+        return self.build_chat_prompt(user_input, **kwargs)
+
+def build_rag_prompt(
         self,
         question: str,
         context_chunks: List[Dict[str, Any]],
