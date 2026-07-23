@@ -13,6 +13,7 @@ from core.inference_engine.engine import InferenceEngine, get_inference_engine
 from core.inference_engine.stream_handler import StreamEvent
 from services.prompts.prompt_builder import PromptBuilder
 from services.memory.session_manager import SessionManager, get_session_manager
+from brain.memory.unified_interface import get_unified_memory
 from .chat_session import ChatSession, TurnResult
 from .citation_injector import CitationInjector
 from .moderation_layer import ModerationLayer
@@ -111,6 +112,11 @@ class ChatService:
         if self._sessions is None:
             self._sessions = get_session_manager()
         return self._sessions
+
+    @property
+    def unified_memory(self):
+        """الوصول للذاكرة الموحّدة (UnifiedMemoryInterface)."""
+        return get_unified_memory()
 
     async def initialize(self) -> None:
         if self._initialized:
@@ -232,7 +238,7 @@ class ChatService:
 
         latency_ms = (time.perf_counter() - t_start) * 1000
 
-        # 9. Store in memory
+        # 9. Store in memory (Unified — writes to both MemoryFabric + SessionManager)
         turn_result = TurnResult(
             turn_id=turn_id,
             user_message=request.message,
@@ -244,6 +250,28 @@ class ChatService:
             provider=processed.provider,
         )
         chat_session.add_turn(turn_result)
+
+        # Also write to UnifiedMemoryInterface for cross-system sync
+        try:
+            import asyncio
+            asyncio.create_task(
+                self.unified_memory.add_message(
+                    session_id=session_id,
+                    role="user",
+                    content=request.message,
+                    metadata={"turn_id": turn_id, "type": "user"}
+                )
+            )
+            asyncio.create_task(
+                self.unified_memory.add_message(
+                    session_id=session_id,
+                    role="assistant",
+                    content=final_content,
+                    metadata={"turn_id": turn_id, "type": "assistant", "sources": sources}
+                )
+            )
+        except Exception as e:
+            logger.debug("UnifiedMemoryInterface write skipped: %s", e)
 
         logger.info(
             "Chat turn: session=%s lang=%s tokens=%d latency=%.1fms",
