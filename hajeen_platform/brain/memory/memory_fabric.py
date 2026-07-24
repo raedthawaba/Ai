@@ -325,6 +325,17 @@ class MemoryFabric:
         if session_id in self._conversations:
             self._conversations[session_id].clear()
 
+    def get_session_overview(self, session_id: str) -> Optional[Dict[str, Any]]:
+        if session_id not in self._conversations:
+            return None
+        conv = self._conversations[session_id]
+        return {
+            "session_id": session_id,
+            "message_count": len(conv._messages),
+            "last_message_at": conv._messages[-1]["at"] if conv._messages else None,
+            "summary": conv.get_summary_context(),
+        }
+
     # ── Conversation Memory ────────────────────────────────────────────────
     def get_conversation(self, session_id: str) -> ConversationMemory:
         if session_id not in self._conversations:

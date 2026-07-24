@@ -1,4 +1,4 @@
-"""Phase 8.6 — Chat Service: خدمة الدردشة الرئيسية مع RAG."""
+"""Phase 8.6 — Chat Service: خدمة الدردشة الرئيسية مع RAG (Adapter for HajeenBrainV3)."""
 from __future__ import annotations
 
 import logging
@@ -7,17 +7,12 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
-from core.llm.base import LLMMessage
-from core.llm.llm_manager import LLMManager, get_llm_manager
-from core.inference_engine.engine import InferenceEngine, get_inference_engine
+from brain.brain_v3 import HajeenBrainV3, BrainRequest, BrainResponse, get_brain_v3
 from core.inference_engine.stream_handler import StreamEvent
-from services.prompts.prompt_builder import PromptBuilder
 from services.memory.session_manager import SessionManager, get_session_manager
 from brain.memory.unified_interface import get_unified_memory
 from .chat_session import ChatSession, TurnResult
 from .citation_injector import CitationInjector
-from .moderation_layer import ModerationLayer
-from .response_postprocessor import ResponsePostprocessor
 
 logger = logging.getLogger(__name__)
 
@@ -69,43 +64,25 @@ class ChatResponse:
 
 class ChatService:
     """
-    خدمة الدردشة الرئيسية.
-
-    Pipeline:
-    1. Moderation فحص المدخلات
-    2. Session management
-    3. RAG retrieval (اختياري)
-    4. Prompt building
-    5. LLM inference
-    6. Response postprocessing
-    7. Citation injection
-    8. Memory storage
+    خدمة الدردشة الرئيسية (Adapter).
+    
+    تم تحويل هذه الخدمة لتكون مجرد محول (Adapter) يمرر الطلبات إلى HajeenBrainV3.
+    جميع عمليات الـ Moderation, RAG, Prompt Building, Inference, Postprocessing
+    تتم الآن داخل العقل المركزي (Brain).
     """
 
     def __init__(
         self,
-        inference_engine: Optional[InferenceEngine] = None,
+        brain: Optional[HajeenBrainV3] = None,
         session_manager: Optional[SessionManager] = None,
         rag_pipeline: Optional[Any] = None,
-        prompt_builder: Optional[PromptBuilder] = None,
-        moderation: Optional[ModerationLayer] = None,
-        postprocessor: Optional[ResponsePostprocessor] = None,
         citation_injector: Optional[CitationInjector] = None,
     ):
-        self._engine = inference_engine
+        self._brain = brain
         self._sessions = session_manager
         self._rag = rag_pipeline
-        self.prompt_builder = prompt_builder or PromptBuilder()
-        self.moderation = moderation or ModerationLayer()
-        self.postprocessor = postprocessor or ResponsePostprocessor()
         self.citation_injector = citation_injector or CitationInjector()
         self._initialized = False
-
-    @property
-    def engine(self) -> InferenceEngine:
-        if self._engine is None:
-            self._engine = get_inference_engine()
-        return self._engine
 
     @property
     def sessions(self) -> SessionManager:
@@ -121,133 +98,70 @@ class ChatService:
     async def initialize(self) -> None:
         if self._initialized:
             return
-        await self.engine.initialize()
+        self._brain = self._brain or await get_brain_v3()
         self._initialized = True
-        logger.info("ChatService initialized")
+        logger.info("ChatService initialized as adapter for HajeenBrainV3")
 
     async def chat(self, request: ChatRequest) -> ChatResponse:
         """
-        تنفيذ محادثة كاملة.
+        تنفيذ محادثة كاملة عبر HajeenBrainV3.
         """
         if not self._initialized:
             await self.initialize()
 
         t_start = time.perf_counter()
         turn_id = str(uuid.uuid4())
-
-        # 1. Moderation
-        mod_result = self.moderation.check_input(request.message)
-        if not mod_result.passed:
-            return ChatResponse(
-                content=(
-                    "عذراً، لا يمكنني معالجة هذا الطلب. "
-                    f"السبب: {mod_result.reason}"
-                    if request.language == "ar"
-                    else f"Sorry, I cannot process this request. Reason: {mod_result.reason}"
-                ),
-                session_id=request.session_id or str(uuid.uuid4()),
-                turn_id=turn_id,
-                model="moderation",
-                provider="moderation",
-                sources=[],
-                latency_ms=0.0,
-                tokens_used=0,
-                language=request.language,
-            )
-
-        # 2. Session management
         session_id = request.session_id or str(uuid.uuid4())
+
+        # 1. Prepare BrainRequest
+        brain_request = BrainRequest(
+            request_id=turn_id,
+            user_message=request.message,
+            session_id=session_id,
+            context={
+                "language": request.language,
+                "use_rag": request.use_rag,
+                "temperature": request.temperature,
+                "max_tokens": request.max_tokens,
+                "model": request.model,
+                "top_k": request.top_k,
+                "system_prompt": request.system_prompt,
+            },
+            stream=False,
+            max_tokens=request.max_tokens or 2048,
+            temperature=request.temperature or 0.7,
+            force_model=request.model,
+        )
+
+        # 2. Process through Brain
+        brain_response: BrainResponse = await self._brain.process(brain_request)
+
+        # 3. Extract results
+        final_content = brain_response.content
+        model_used = brain_response.model_used
+        provider_used = brain_response.policy_decision # Placeholder, could be extracted from trace
+        
+        # Extract sources if RAG was used (assuming Brain puts them in trace execution)
+        sources = brain_response.trace.execution.get("rag_sources", [])
+        
+        tokens_used = brain_response.trace.tokens_used
+        latency_ms = brain_response.trace.total_latency_ms
+
+        # 4. Store in legacy SessionManager for compatibility
         chat_session = self.sessions.get_or_create(
             session_id=session_id,
             system_prompt=request.system_prompt,
         )
-
-        # 3. RAG retrieval
-        sources: List[Dict[str, Any]] = []
-        context_chunks: List[Dict[str, Any]] = []
-
-        if request.use_rag and self._rag:
-            try:
-                from services.rag.rag_pipeline import RAGRequest
-                rag_req = RAGRequest(
-                    query=request.message,
-                    top_k=request.top_k,
-                    language=request.language,
-                )
-                rag_result = await self._rag.run(rag_req)
-                sources = rag_result.formatted.citations or []
-                context_chunks = [
-                    {"text": src.get("text", ""), "title": src.get("title", ""),
-                     "url": src.get("url", ""), "score": src.get("score", 0.0)}
-                    for src in sources
-                ]
-            except Exception as e:
-                logger.warning("RAG retrieval failed: %s", e)
-
-        # 4. Prompt building
-        if context_chunks:
-            built_prompt = self.prompt_builder.build_rag_prompt(
-                question=request.message,
-                context_chunks=context_chunks,
-                language=request.language,
-                history=chat_session.memory.get_messages(include_system=False),
-            )
-        else:
-            history = chat_session.get_context_messages()
-            built_prompt = self.prompt_builder.build_chat_prompt(
-                user_message=request.message,
-                history=[m for m in history if m.role != "system"],
-                language=request.language,
-                system_prompt_name=request.system_prompt,
-            )
-
-        # 5. LLM Inference
-        messages_dicts = [
-            {"role": m.role, "content": m.content}
-            for m in built_prompt.messages
-        ]
-
-        processed = await self.engine.infer(
-            messages=messages_dicts,
-            model=request.model,
-            temperature=request.temperature,
-            max_tokens=request.max_tokens,
-            session_id=session_id,
-        )
-
-        # 6. Post-processing
-        postprocessed = self.postprocessor.process(
-            processed.cleaned_content,
-            language=request.language,
-        )
-
-        # 7. Citation injection
-        final_content = self.citation_injector.inject(
-            postprocessed.content,
-            sources,
-        )
-
-        # 8. Output moderation
-        out_mod = self.moderation.check_output(final_content)
-        if not out_mod.passed:
-            final_content = (
-                "عذراً، حدث خطأ في معالجة الاستجابة."
-                if request.language == "ar"
-                else "Sorry, there was an error processing the response."
-            )
-
-        latency_ms = (time.perf_counter() - t_start) * 1000
-
-        # 9. Store in memory (Unified — writes to both MemoryFabric + SessionManager)
+        
         turn_result = TurnResult(
             turn_id=turn_id,
             user_message=request.message,
             assistant_response=final_content,
             sources=sources,
             latency_ms=latency_ms,
-            tokens_used=processed.total_tokens,
-            model=processed.model,
-            provider=processed.provider,
+            tokens_used=tokens_used,
+            model=model_used,
+            provider=provider_used,
         )
         chat_session.add_turn(turn_result)
 
@@ -274,19 +188,19 @@ class ChatService:
             logger.debug("UnifiedMemoryInterface write skipped: %s", e)
 
         logger.info(
-            "Chat turn: session=%s lang=%s tokens=%d latency=%.1fms",
-            session_id, request.language, processed.total_tokens, latency_ms,
+            "Chat turn (via Brain): session=%s lang=%s tokens=%d latency=%.1fms",
+            session_id, request.language, tokens_used, latency_ms,
         )
 
         return ChatResponse(
             content=final_content,
             session_id=session_id,
             turn_id=turn_id,
-            model=processed.model,
-            provider=processed.provider,
+            model=model_used,
+            provider=provider_used,
             sources=self.citation_injector.format_citations_for_api(sources),
             latency_ms=latency_ms,
-            tokens_used=processed.total_tokens,
+            tokens_used=tokens_used,
             language=request.language,
         )
 
@@ -294,37 +208,58 @@ class ChatService:
         self,
         request: ChatRequest,
     ) -> AsyncGenerator[StreamEvent, None]:
-        """محادثة مع streaming."""
+        """محادثة مع streaming عبر HajeenBrainV3."""
         if not self._initialized:
             await self.initialize()
-
-        # Moderation check
-        mod_result = self.moderation.check_input(request.message)
-        if not mod_result.passed:
-            from core.inference_engine.stream_handler import StreamEvent
-            yield StreamEvent(
-                event_type="error",
-                data=f"Blocked: {mod_result.reason}",
-            )
-            return
 
         session_id = request.session_id or str(uuid.uuid4())
         stream_id = str(uuid.uuid4())
 
-        # Build messages
-        messages = [
-            {"role": "user", "content": request.message}
-        ]
-
-        async for event in self.engine.stream_infer(
-            messages=messages,
-            model=request.model,
-            temperature=request.temperature,
-            max_tokens=request.max_tokens,
+        brain_request = BrainRequest(
+            request_id=stream_id,
+            user_message=request.message,
             session_id=session_id,
-            stream_id=stream_id,
-        ):
-            yield event
+            context={
+                "language": request.language,
+                "use_rag": request.use_rag,
+                "temperature": request.temperature,
+                "max_tokens": request.max_tokens,
+                "model": request.model,
+                "top_k": request.top_k,
+                "system_prompt": request.system_prompt,
+                "stream": True,
+            },
+            stream=True,
+            max_tokens=request.max_tokens or 2048,
+            temperature=request.temperature or 0.7,
+            force_model=request.model,
+        )
+
+        try:
+            async for chunk in self._brain.stream(brain_request):
+                # Parse SSE format from Brain stream
+                if chunk.startswith("data: "):
+                    data_str = chunk[6:].strip()
+                    if data_str == "[DONE]":
+                        yield StreamEvent(event_type="done", data="")
+                        break
+                    
+                    try:
+                        import json
+                        # Brain stream yields dict strings like {'content': '...'}
+                        # We need to safely evaluate or parse them
+                        import ast
+                        data_dict = ast.literal_eval(data_str)
+                        if "content" in data_dict:
+                            yield StreamEvent(event_type="content", data=data_dict["content"])
+                        elif "brain_decision" in data_dict:
+                            yield StreamEvent(event_type="meta", data=data_dict["brain_decision"])
+                    except Exception as e:
+                        logger.debug("Failed to parse stream chunk: %s", e)
+                        # Fallback: just yield the raw string if it's not a dict
+                        yield StreamEvent(event_type="content", data=data_str)
+        except Exception as e:
+            yield StreamEvent(event_type="error", data=str(e))
 
     def set_rag_pipeline(self, rag_pipeline: Any) -> None:
         """تعيين RAG pipeline."""

@@ -391,17 +391,7 @@ async def on_startup():
     except Exception as exc:
         logger.error("startup: فشل تهيئة Inference Engine — %s", exc)
 
-    # 7. تهيئة Chat Service
-    try:
-        from services.chat.chat_service import get_chat_service
-        chat = get_chat_service()
-        await chat.initialize()
-        rag = _search_state.get("rag_pipeline")
-        if rag:
-            chat.set_rag_pipeline(rag)
-        logger.info("startup: Chat Service جاهز ✓")
-    except Exception as exc:
-        logger.error("startup: فشل تهيئة Chat Service — %s", exc)
+    # Chat Service is now an adapter, initialized implicitly when first used via HajeenBrainV3
 
     # 8. تهيئة AI Metrics
     try:
@@ -434,8 +424,8 @@ async def on_startup():
 
     # 11. تهيئة HajeenBrain V3 — العقل الموحّد
     try:
-        from brain import get_brain
-        brain = await get_brain()
+        from brain.brain_v3 import get_brain_v3
+        brain = await get_brain_v3()
         app.state.brain = brain
         logger.info("startup: HajeenBrainV3 v%s جاهز ✓", getattr(brain, 'VERSION', 'unknown'))
     except Exception as exc:
@@ -529,14 +519,4 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)
 
-# ── Hajeen Brain v2 Router ────────────────────────────────────────────────
-try:
-    import sys as _sys
-    _brain_path = str(__import__('pathlib').Path(__file__).parent.parent)
-    if _brain_path not in _sys.path:
-        _sys.path.insert(0, _brain_path)
-    from brain.api.brain_router import router as brain_router
-    app.include_router(brain_router, prefix="/api/v1")
-    logger.info("startup: Hajeen Brain v2 router مسجّل ✓")
-except Exception as _e:
-    logger.warning("Hajeen Brain v2 router غير متاح: %s", _e)
+    # Hajeen Brain v2 Router is deprecated and removed.

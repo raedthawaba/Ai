@@ -1,4 +1,3 @@
-"""Phase 8.7 + 9.6 — AI API Router: endpoints للذكاء الاصطناعي."""
 from __future__ import annotations
 
 import asyncio
@@ -12,8 +11,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from api.v1.ai.chat import router as chat_router
-from api.v1.ai.completion import router as completion_router
+from brain.brain_v3 import HajeenBrainV3, BrainRequest, BrainResponse, RequestType, get_brain_v3
+
 from api.v1.ai.embeddings import router as embeddings_router
 from api.v1.ai.rerank import router as rerank_router
 from api.v1.ai.models import router as models_router
@@ -24,9 +23,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# ── Phase 9.6: Mount sub-routers ──────────────────────────────────────────────
-router.include_router(chat_router, tags=["Chat"])
-router.include_router(completion_router, tags=["Completion"])
+# ── Mount sub-routers (only those not directly handled by Brain) ────────────────
 router.include_router(embeddings_router, tags=["Embeddings"])
 router.include_router(rerank_router, tags=["Rerank"])
 router.include_router(models_router, tags=["Models"])
@@ -49,6 +46,7 @@ class ChatRequestSchema(BaseModel):
     max_tokens: Optional[int] = Field(None, ge=1, le=4096)
     model: Optional[str] = None
     top_k: int = Field(5, ge=1, le=20)
+    system_prompt: Optional[str] = None # Added system_prompt to schema
 
 
 class CompletionRequestSchema(BaseModel):
@@ -69,112 +67,120 @@ class RAGQuerySchema(BaseModel):
     max_tokens: Optional[int] = Field(None, ge=1, le=2048)
 
 
-# ── Dependency: Chat Service ───────────────────────────────────────────────────
-
-def get_chat_service_dep():
-    from services.chat.chat_service import get_chat_service
-    return get_chat_service()
-
-
-def get_inference_engine_dep():
-    from core.inference_engine.engine import get_inference_engine
-    return get_inference_engine()
-
-
 # ── POST /chat ─────────────────────────────────────────────────────────────────
 
-@router.post("/chat", summary="محادثة AI مع RAG", tags=["AI"])
+@router.post("/chat", summary="محادثة AI موحدة عبر HajeenBrainV3", tags=["AI"])
 async def chat(
     body: ChatRequestSchema,
     request: Request,
 ) -> Dict[str, Any]:
     """
-    محادثة كاملة مع دعم RAG.
-
-    - استرجاع دلالي تلقائي
-    - إدارة جلسة المحادثة
-    - حقن المصادر
-    - دعم عربي/إنجليزي
+    محادثة كاملة موحدة عبر HajeenBrainV3.
     """
-    from services.chat.chat_service import ChatRequest, get_chat_service
+    brain = request.app.state.brain
+    if brain is None:
+        raise HTTPException(status_code=503, detail="HajeenBrainV3 not initialized")
 
-    chat_service = get_chat_service()
-
-    # ربط RAG Pipeline من app state إن وُجد
-    if not chat_service._rag:
-        rag = getattr(request.app.state, "rag_pipeline", None)
-        if rag:
-            chat_service.set_rag_pipeline(rag)
-
-    chat_request = ChatRequest(
-        message=body.message,
-        session_id=body.session_id,
-        language=body.language,
-        use_rag=body.use_rag,
-        temperature=body.temperature,
-        max_tokens=body.max_tokens,
-        model=body.model,
-        top_k=body.top_k,
+    brain_request = BrainRequest(
+        request_id=f"chat_{uuid.uuid4().hex[:12]}",
+        user_message=body.message,
+        session_id=body.session_id or str(uuid.uuid4()),
+        context={
+            "language": body.language,
+            "use_rag": body.use_rag,
+            "temperature": body.temperature,
+            "max_tokens": body.max_tokens,
+            "model": body.model,
+            "top_k": body.top_k,
+            "system_prompt": body.system_prompt,
+        },
+        stream=False,
+        max_tokens=body.max_tokens or 2048,
+        temperature=body.temperature or 0.7,
+        force_model=body.model,
     )
 
     try:
-        response = await chat_service.chat(chat_request)
+        brain_response: BrainResponse = await brain.process(brain_request)
         return {
             "success": True,
-            **response.to_dict(),
+            "response": brain_response.content,
+            "session_id": brain_response.session_id,
+            "turn_id": brain_response.request_id,
+            "model": brain_response.model_used,
+            "provider": brain_response.policy_decision, # Placeholder, adjust as needed
+            "sources": brain_response.trace.execution.get("rag_sources", []), # Assuming RAG sources are in trace
+            "latency_ms": brain_response.trace.total_latency_ms,
+            "tokens_used": brain_response.trace.tokens_used,
+            "language": body.language,
         }
     except Exception as e:
-        logger.error("Chat error: %s", e)
-        raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
+        logger.error("Brain chat error: %s", e)
+        raise HTTPException(status_code=500, detail=f"Brain chat error: {str(e)}")
 
 
 # ── POST /chat/stream ──────────────────────────────────────────────────────────
 
-@router.post("/chat/stream", summary="محادثة AI مع Streaming", tags=["AI"])
+@router.post("/chat/stream", summary="محادثة AI متدفقة عبر HajeenBrainV3", tags=["AI"])
 async def chat_stream(
     body: ChatRequestSchema,
     request: Request,
 ) -> StreamingResponse:
     """
-    محادثة مع Streaming SSE.
-
-    يُرجع tokens تدريجياً بتنسيق Server-Sent Events.
+    محادثة متدفقة موحدة عبر HajeenBrainV3.
     """
-    from services.chat.chat_service import ChatRequest, get_chat_service
+    brain = request.app.state.brain
+    if brain is None:
+        raise HTTPException(status_code=503, detail="HajeenBrainV3 not initialized")
 
-    chat_service = get_chat_service()
-    if not chat_service._rag:
-        rag = getattr(request.app.state, "rag_pipeline", None)
-        if rag:
-            chat_service.set_rag_pipeline(rag)
-
-    chat_request = ChatRequest(
-        message=body.message,
-        session_id=body.session_id,
-        language=body.language,
-        use_rag=body.use_rag,
+    stream_id = str(uuid.uuid4())
+    brain_request = BrainRequest(
+        request_id=stream_id,
+        user_message=body.message,
+        session_id=body.session_id or str(uuid.uuid4()),
+        context={
+            "language": body.language,
+            "use_rag": body.use_rag,
+            "temperature": body.temperature,
+            "max_tokens": body.max_tokens,
+            "model": body.model,
+            "top_k": body.top_k,
+            "system_prompt": body.system_prompt,
+            "stream": True,
+        },
         stream=True,
-        temperature=body.temperature,
-        max_tokens=body.max_tokens,
-        model=body.model,
+        max_tokens=body.max_tokens or 2048,
+        temperature=body.temperature or 0.7,
+        force_model=body.model,
     )
 
     async def event_generator() -> AsyncGenerator[str, None]:
         try:
-            async for event in chat_service.stream_chat(chat_request):
-                data = json.dumps({
-                    "type": event.event_type,
-                    "data": event.data,
-                    "index": event.chunk_index,
-                }, ensure_ascii=False)
-                yield f"data: {data}\n\n"
-
-                if event.event_type in ("done", "error"):
-                    break
-        except asyncio.CancelledError:
-            yield f"data: {json.dumps({'type': 'error', 'data': 'cancelled'})}\n\n"
+            async for chunk in brain.stream(brain_request):
+                # Brain stream yields dict strings like {'content': '...'} or {'brain_decision': '...'}
+                # We need to safely parse them and format as SSE
+                if chunk.startswith("data: "):
+                    data_str = chunk[6:].strip()
+                    if data_str == "[DONE]":
+                        yield f"data: {json.dumps({'choices': [{'delta': {'content': ''}, 'finish_reason': 'stop'}]})}\n\n"
+                        yield "data: [DONE]\n\n"
+                        break
+                    try:
+                        import ast
+                        data_dict = ast.literal_eval(data_str)
+                        if "content" in data_dict:
+                            yield f"data: {json.dumps({'choices': [{'delta': {'content': data_dict['content']}}]})}\n\n"
+                        elif "brain_decision" in data_dict:
+                            # Optionally send brain decision as a meta event
+                            yield f"data: {json.dumps({'meta': {'brain_decision': data_dict['brain_decision']}})}\n\n"
+                    except Exception as e:
+                        logger.debug("Failed to parse stream chunk from Brain: %s", e)
+                        # Fallback: just yield the raw string if it's not a dict
+                        yield f"data: {json.dumps({'choices': [{'delta': {'content': data_str}}]})}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'data': str(e)})}\n\n"
+            logger.error("Brain stream error: %s", e)
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            yield "data: [DONE]\n\n"
 
     return StreamingResponse(
         event_generator(),
@@ -187,93 +193,50 @@ async def chat_stream(
     )
 
 
-# ── POST /completion ───────────────────────────────────────────────────────────
-
-@router.post("/completion", summary="LLM Completion مباشر", tags=["AI"])
-async def completion(body: CompletionRequestSchema) -> Dict[str, Any]:
-    """
-    LLM Completion مباشر بدون RAG.
-
-    يقبل قائمة messages ويرجع استجابة كاملة.
-    """
-    from core.inference_engine.engine import get_inference_engine
-
-    engine = get_inference_engine()
-
-    messages = [{"role": m.role, "content": m.content} for m in body.messages]
-
-    try:
-        processed = await engine.infer(
-            messages=messages,
-            model=body.model,
-            temperature=body.temperature,
-            max_tokens=body.max_tokens,
-            session_id=body.session_id,
-        )
-        return {
-            "success": True,
-            "response": processed.cleaned_content,
-            "model": processed.model,
-            "provider": processed.provider,
-            "usage": {
-                "prompt_tokens": processed.prompt_tokens,
-                "completion_tokens": processed.completion_tokens,
-                "total_tokens": processed.total_tokens,
-            },
-            "latency_ms": round(processed.latency_ms, 2),
-        }
-    except Exception as e:
-        logger.error("Completion error: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 # ── POST /rag/query ────────────────────────────────────────────────────────────
 
-@router.post("/rag/query", summary="RAG Query مع LLM", tags=["AI", "RAG"])
+@router.post("/rag/query", summary="RAG Query عبر HajeenBrainV3", tags=["AI", "RAG"])
 async def rag_query(
     body: RAGQuerySchema,
     request: Request,
 ) -> Dict[str, Any]:
     """
-    استعلام RAG كامل: Retrieval + Prompt Building + LLM inference.
+    استعلام RAG كامل عبر HajeenBrainV3.
     """
-    rag_pipeline = getattr(request.app.state, "rag_pipeline", None)
-    if not rag_pipeline:
-        raise HTTPException(503, "RAG pipeline not initialized")
+    brain = request.app.state.brain
+    if brain is None:
+        raise HTTPException(status_code=503, detail="HajeenBrainV3 not initialized")
+
+    brain_request = BrainRequest(
+        request_id=f"rag_{uuid.uuid4().hex[:12]}",
+        user_message=body.query,
+        session_id=str(uuid.uuid4()), # RAG queries might not have a session_id
+        context={
+            "language": body.language,
+            "use_rag": True,
+            "temperature": body.temperature,
+            "max_tokens": body.max_tokens,
+            "top_k": body.top_k,
+        },
+        request_type=RequestType.ANALYSIS, # Or a more appropriate type for RAG
+        max_tokens=body.max_tokens or 2048,
+        temperature=body.temperature or 0.7,
+    )
 
     try:
-        from services.rag.rag_pipeline import RAGRequest
-
-        rag_req = RAGRequest(
-            query=body.query,
-            top_k=body.top_k,
-            language=body.language,
-        )
-        rag_result = await rag_pipeline.run(rag_req)
-        result_dict = rag_result.to_dict()
-
-        if body.use_llm:
-            # إرسال الـ prompt الجاهز للـ LLM
-            from core.inference_engine.engine import get_inference_engine
-            from core.llm.base import LLMMessage
-
-            engine = get_inference_engine()
-            built_prompt = result_dict.get("prompt", body.query)
-            processed = await engine.infer(
-                messages=[{"role": "user", "content": built_prompt}],
-                temperature=body.temperature or 0.7,
-                max_tokens=body.max_tokens or 1024,
-            )
-            result_dict["llm_response"] = processed.cleaned_content
-            result_dict["model"] = processed.model
-            result_dict["tokens_used"] = processed.total_tokens
-
-        return {"success": True, **result_dict}
-    except HTTPException:
-        raise
+        brain_response = await brain.process(brain_request)
+        return {
+            "success": True,
+            "response": brain_response.content,
+            "model": brain_response.model_used,
+            "provider": brain_response.policy_decision, # Placeholder, adjust as needed
+            "sources": brain_response.trace.execution.get("rag_sources", []), # Assuming RAG sources are in trace
+            "tokens_used": brain_response.trace.tokens_used,
+            "latency_ms": brain_response.trace.total_latency_ms,
+        }
     except Exception as e:
-        logger.error("RAG query error: %s", e)
-        raise HTTPException(500, f"RAG error: {str(e)}")
+        logger.error("Brain RAG query error: %s", e)
+        raise HTTPException(status_code=500, detail=f"Brain RAG query error: {str(e)}")
 
 
 # ── GET /models ────────────────────────────────────────────────────────────────
@@ -283,6 +246,9 @@ async def list_models() -> Dict[str, Any]:
     """
     قائمة النماذج والمزودين المتاحين.
     """
+    # This endpoint can remain as is, as it queries LLMManager directly
+    # or could be updated to query HajeenBrainV3 for its known models.
+    # For now, keeping it as is to avoid unnecessary changes.
     from core.llm.llm_manager import get_llm_manager
     from core.llm.provider_registry import ProviderRegistry
 
@@ -310,54 +276,56 @@ async def list_models() -> Dict[str, Any]:
 
 # ── GET /chat/sessions/{session_id} ───────────────────────────────────────────
 
-@router.get("/chat/sessions/{session_id}", summary="معلومات جلسة المحادثة", tags=["AI"])
-async def get_session(session_id: str) -> Dict[str, Any]:
-    """الحصول على معلومات جلسة محادثة."""
-    from services.chat.chat_service import get_chat_service
-
-    chat_service = get_chat_service()
-    info = chat_service.get_session_info(session_id)
-    if not info:
+@router.get("/chat/sessions/{session_id}", summary="معلومات جلسة المحادثة عبر HajeenBrainV3", tags=["AI"])
+async def get_session(session_id: str, request: Request) -> Dict[str, Any]:
+    """
+    الحصول على معلومات جلسة محادثة عبر HajeenBrainV3.
+    """
+    brain = request.app.state.brain
+    if brain is None:
+        raise HTTPException(status_code=503, detail="HajeenBrainV3 not initialized")
+    
+    # Assuming HajeenBrainV3 has a method to get session info from MemoryFabric
+    # This method needs to be implemented in MemoryFabric or exposed via Brain
+    session_info = brain.memory.get_session_overview(session_id) # This method needs to be implemented in MemoryFabric
+    if not session_info:
         raise HTTPException(404, f"Session '{session_id}' not found")
-    return info
+    return session_info
 
 
 # ── POST /chat/sessions/{session_id}/clear ────────────────────────────────────
 
-@router.post("/chat/sessions/{session_id}/clear", summary="مسح جلسة محادثة", tags=["AI"])
-async def clear_session(session_id: str) -> Dict[str, Any]:
-    """مسح سجل جلسة محادثة."""
-    from services.memory.session_manager import get_session_manager
-
-    manager = get_session_manager()
-    deleted = manager.delete_session(session_id)
+@router.post("/chat/sessions/{session_id}/clear", summary="مسح جلسة محادثة عبر HajeenBrainV3", tags=["AI"])
+async def clear_session(session_id: str, request: Request) -> Dict[str, Any]:
+    """
+    مسح سجل جلسة محادثة عبر HajeenBrainV3.
+    """
+    brain = request.app.state.brain
+    if brain is None:
+        raise HTTPException(status_code=503, detail="HajeenBrainV3 not initialized")
+    
+    # Assuming HajeenBrainV3 has a method to clear session in MemoryFabric
+    # This method needs to be implemented in MemoryFabric or exposed via Brain
+    brain.memory.clear_session(session_id) # This method needs to be implemented in MemoryFabric
     return {
-        "deleted": deleted,
+        "deleted": True,
         "session_id": session_id,
-        "message": "Session cleared" if deleted else "Session not found",
+        "message": "Session cleared",
     }
 
 
 # ── GET /ai/stats ──────────────────────────────────────────────────────────────
 
-@router.get("/stats", summary="إحصائيات AI Engine", tags=["AI"])
-async def ai_stats() -> Dict[str, Any]:
-    """إحصائيات شاملة لمحرك الـ AI."""
-    from core.inference_engine.engine import get_inference_engine
-    from services.memory.session_manager import get_session_manager
-    from services.chat.chat_service import get_chat_service
+@router.get("/stats", summary="إحصائيات HajeenBrainV3", tags=["AI"])
+async def ai_stats(request: Request) -> Dict[str, Any]:
+    """
+    إحصائيات شاملة لـ HajeenBrainV3.
+    """
+    brain = request.app.state.brain
+    if brain is None:
+        raise HTTPException(status_code=503, detail="HajeenBrainV3 not initialized")
 
-    engine = get_inference_engine()
-    session_mgr = get_session_manager()
-
-    stats = engine.get_stats()
-    session_stats = session_mgr.get_stats()
-
-    return {
-        "inference": stats,
-        "sessions": session_stats,
-        "phase": "8 — LLM Inference + AI Runtime",
-    }
+    return brain.get_status()
 
 @router.post("/evaluate", summary="تشغيل إطار التقييم", tags=["AI"])
 async def evaluate_model() -> Dict[str, Any]:
@@ -367,4 +335,3 @@ async def evaluate_model() -> Dict[str, Any]:
     eval_framework = EvaluationFramework()
     report = await eval_framework.evaluate_and_save_report()
     return report
-

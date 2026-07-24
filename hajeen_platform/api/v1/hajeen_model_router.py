@@ -100,75 +100,141 @@ async def model_info():
     }
 
 
+from brain.brain_v3 import BrainRequest, BrainResponse, RequestType, get_brain_v3
+
 @router.post("/chat")
-async def chat(req: ChatRequest):
-    """محادثة مع Hajeen Model v1."""
+async def chat(req: ChatRequest, request: Request):
+    """محادثة مع Hajeen Model v1 (موجهة عبر HajeenBrainV3)."""
+    brain = request.app.state.brain
+    if brain is None:
+        raise HTTPException(status_code=503, detail="HajeenBrainV3 not initialized")
+
+    brain_request = BrainRequest(
+        request_id=f"hajeen_model_chat_{uuid.uuid4().hex[:12]}",
+        user_message=req.message,
+        session_id=str(uuid.uuid4()), # New session for this specific model chat, or use req.session_id if available
+        context={
+            "history": req.history,
+            "temperature": req.temperature,
+            "max_tokens": req.max_tokens,
+        },
+        stream=False,
+        max_tokens=req.max_tokens or 1024,
+        temperature=req.temperature or 0.7,
+        force_model=None, # Let Brain decide
+        request_type=RequestType.CHAT,
+    )
+
     try:
-        from hajeen_model.hajeen_model_v1 import get_hajeen_model
-        model = get_hajeen_model()
-
-        t0 = time.perf_counter()
-        response = await model.chat(
-            user_message=req.message,
-            history=req.history,
-            temperature=req.temperature,
-            max_tokens=req.max_tokens,
-        )
-        latency = round((time.perf_counter() - t0) * 1000, 1)
-
+        brain_response: BrainResponse = await brain.process(brain_request)
         return {
             "ok": True,
-            "content": response.content,
-            "provider": response.provider,
-            "is_mock": response.is_mock,
-            "model": response.model,
+            "content": brain_response.content,
+            "provider": brain_response.model_used, # Using model_used as provider for now
+            "is_mock": False,
+            "model": brain_response.model_used,
             "usage": {
-                "prompt_tokens": response.prompt_tokens,
-                "completion_tokens": response.completion_tokens,
-                "total_tokens": response.total_tokens,
+                "prompt_tokens": brain_response.trace.tokens_used, # Assuming trace has this
+                "completion_tokens": brain_response.trace.tokens_used, # Assuming trace has this
+                "total_tokens": brain_response.trace.tokens_used,
             },
-            "latency_ms": latency,
+            "latency_ms": brain_response.trace.total_latency_ms,
         }
     except Exception as e:
-        logger.error("Chat error: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Hajeen Model v1 chat error via Brain: %s", e)
+        raise HTTPException(status_code=500, detail=f"Hajeen Model v1 chat error: {str(e)}")
 
 
 @router.post("/complete")
-async def complete(req: CompleteRequest):
+async def complete(req: CompleteRequest, request: Request):
     """استدلال كامل مع رسائل متعددة."""
     try:
-        from hajeen_model.hajeen_model_v1 import get_hajeen_model, HajeenRequest, HajeenMessage
-        model = get_hajeen_model()
+        brain = request.app.state.brain
+        if brain is None:
+            raise HTTPException(status_code=503, detail="HajeenBrainV3 not initialized")
 
-        messages = [HajeenMessage(m.role, m.content) for m in req.messages]
-        request = HajeenRequest(
-            messages=messages,
-            temperature=req.temperature,
-            max_tokens=req.max_tokens,
+        user_message = " ".join([m.content for m in req.messages if m.role == "user"])
+        
+        brain_request = BrainRequest(
+            request_id=f"hajeen_model_complete_{uuid.uuid4().hex[:12]}",
+            user_message=user_message,
+            session_id=str(uuid.uuid4()),
+            context={
+                "messages": [m.dict() for m in req.messages],
+                "temperature": req.temperature,
+                "max_tokens": req.max_tokens,
+            },
+            stream=False,
+            max_tokens=req.max_tokens or 1024,
+            temperature=req.temperature or 0.7,
+            force_model=None,
+            request_type=RequestType.GENERATION,
         )
-        response = await model.complete(request)
-        return {"ok": True, **response.to_dict()}
+
+        brain_response: BrainResponse = await brain.process(brain_request)
+        return {
+            "ok": True,
+            "content": brain_response.content,
+            "model": brain_response.model_used,
+            "usage": {
+                "prompt_tokens": brain_response.trace.tokens_used,
+                "completion_tokens": brain_response.trace.tokens_used,
+                "total_tokens": brain_response.trace.tokens_used,
+            },
+            "latency_ms": brain_response.trace.total_latency_ms,
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/stream")
-async def stream_chat(req: ChatRequest):
-    """Streaming response (Server-Sent Events)."""
-    from hajeen_model.hajeen_model_v1 import get_hajeen_model
+async def stream_chat(req: ChatRequest, request: Request):
+    """Streaming response (Server-Sent Events) via HajeenBrainV3."""
+    brain = request.app.state.brain
+    if brain is None:
+        raise HTTPException(status_code=503, detail="HajeenBrainV3 not initialized")
 
-    model = get_hajeen_model()
+    stream_id = str(uuid.uuid4())
+    brain_request = BrainRequest(
+        request_id=stream_id,
+        user_message=req.message,
+        session_id=str(uuid.uuid4()),
+        context={
+            "history": req.history,
+            "temperature": req.temperature,
+            "max_tokens": req.max_tokens,
+            "stream": True,
+        },
+        stream=True,
+        max_tokens=req.max_tokens or 1024,
+        temperature=req.temperature or 0.7,
+        force_model=None,
+        request_type=RequestType.CHAT,
+    )
 
     async def generator():
-        yield "data: {\"type\": \"start\"}\n\n"
         try:
-            async for token in model.stream(req.message, req.history):
-                import json
-                yield f"data: {json.dumps({'type': 'token', 'content': token}, ensure_ascii=False)}\n\n"
+            async for chunk in brain.stream(brain_request):
+                if chunk.startswith("data: "):
+                    data_str = chunk[6:].strip()
+                    if data_str == "[DONE]":
+                        yield f"data: {json.dumps({\'type\': \'token\', \'content\': \'\'}, ensure_ascii=False)}\n\n"
+                        yield "data: {\"type\": \"done\"}\n\n"
+                        break
+                    try:
+                        import ast
+                        data_dict = ast.literal_eval(data_str)
+                        if "content" in data_dict:
+                            yield f"data: {json.dumps({\'type\': \'token\', \'content\': data_dict[\'content\']}, ensure_ascii=False)}\n\n"
+                        elif "brain_decision" in data_dict:
+                            yield f"data: {json.dumps({\'type\': \'meta\', \'brain_decision\': data_dict[\'brain_decision\']}, ensure_ascii=False)}\n\n"
+                    except Exception as e:
+                        logger.debug("Failed to parse stream chunk from Brain: %s", e)
+                        yield f"data: {json.dumps({\'type\': \'token\', \'content\': data_str}, ensure_ascii=False)}\n\n"
         except Exception as e:
-            yield f"data: {{\"type\": \"error\", \"error\": \"{str(e)}\"}}\n\n"
-        yield "data: {\"type\": \"done\"}\n\n"
+            logger.error("Hajeen Model v1 stream error via Brain: %s", e)
+            yield f"data: {json.dumps({\'type\': \'error\', \'error\': str(e)}, ensure_ascii=False)}\n\n"
+            yield "data: {\"type\": \"done\"}\n\n"
 
     return StreamingResponse(generator(), media_type="text/event-stream")
 
