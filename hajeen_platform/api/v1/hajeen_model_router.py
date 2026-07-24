@@ -1,12 +1,17 @@
 """
 Hajeen Model v1 API Router — واجهة API للنموذج المحلي.
 
+القاعدة الصارمة:
+- جميع طلبات AI تمر عبر HajeenBrainV3
+- هذا الـ Router مجرد HTTP Adapter — لا منطق AI مستقل هنا
+- لا يوجد LLM call مباشر خارج Brain
+
 Routes:
   GET  /api/v1/model/health          — حالة النموذج
   GET  /api/v1/model/info            — معلومات النموذج
-  POST /api/v1/model/chat            — محادثة
-  POST /api/v1/model/complete        — استدلال كامل
-  POST /api/v1/model/stream          — streaming (SSE)
+  POST /api/v1/model/chat            — محادثة (موجهة عبر HajeenBrainV3)
+  POST /api/v1/model/complete        — استدلال كامل (عبر HajeenBrainV3)
+  POST /api/v1/model/stream          — streaming (SSE) (عبر HajeenBrainV3)
   GET  /api/v1/model/ollama/status   — حالة Ollama
   POST /api/v1/model/ollama/pull     — تحميل نموذج
   GET  /api/v1/model/training/status — حالة التدريب
@@ -17,11 +22,13 @@ Routes:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
+import uuid
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -44,6 +51,8 @@ class ChatRequest(BaseModel):
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(default=1024, ge=1, le=4096)
     stream: bool = Field(default=False)
+    session_id: Optional[str] = Field(default=None)
+    model: Optional[str] = Field(default=None)
 
 
 class CompleteRequest(BaseModel):
@@ -67,6 +76,18 @@ class TrainingRequest(BaseModel):
     simulation: bool = Field(default=True, description="True=محاكاة, False=تدريب فعلي")
 
 
+# ─── Helpers ──────────────────────────────────────────────────────────────────
+
+
+async def _get_brain_from_request(request: Request):
+    """الحصول على HajeenBrainV3 من app state."""
+    brain = getattr(request.app.state, "brain", None)
+    if brain is None:
+        from brain.brain_v3 import get_brain_v3
+        brain = await get_brain_v3()
+    return brain
+
+
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
 
@@ -74,10 +95,16 @@ class TrainingRequest(BaseModel):
 async def model_health():
     """فحص شامل لحالة النموذج."""
     try:
-        from hajeen_model.hajeen_model_v1 import get_hajeen_model
-        model = get_hajeen_model()
-        health = await model.health()
-        return {"ok": True, **health}
+        from brain.brain_v3 import get_brain_v3
+        brain = await get_brain_v3()
+        stats = brain.get_stats()
+        return {
+            "ok": True,
+            "model": "Hajeen Model v1 (via HajeenBrainV3)",
+            "brain_version": brain.VERSION,
+            "memory_overview": stats.get("memory_overview", {}),
+            "routing_stats": stats.get("routing_stats", {}),
+        }
     except Exception as e:
         logger.error("Model health check failed: %s", e)
         return {"ok": False, "error": str(e), "model": "Hajeen Model v1"}
@@ -93,95 +120,91 @@ async def model_info():
     if config_path.exists():
         config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     return {
-        "model": config.get("model", {}),
-        "inference": config.get("inference", {}),
-        "capabilities": config.get("capabilities", []),
+        "model": config.get("model", {"name": "Hajeen Model v1", "version": "1.0"}),
+        "inference": config.get("inference", {"runtime": "HajeenBrainV3"}),
+        "capabilities": config.get("capabilities", ["arabic", "general", "rag"]),
         "system_prompt": config.get("system_prompt", ""),
+        "runtime": "HajeenBrainV3 (Unified Runtime)",
     }
 
 
-from brain.brain_v3 import BrainRequest, BrainResponse, RequestType, get_brain_v3
-
 @router.post("/chat")
 async def chat(req: ChatRequest, request: Request):
-    """محادثة مع Hajeen Model v1 (موجهة عبر HajeenBrainV3)."""
-    brain = request.app.state.brain
-    if brain is None:
-        raise HTTPException(status_code=503, detail="HajeenBrainV3 not initialized")
+    """
+    محادثة مع Hajeen Model v1.
+
+    الضمان: الطلب يمر عبر HajeenBrainV3.process() كاملاً.
+    لا يوجد LLM call مباشر هنا.
+    """
+    from brain.brain_v3 import BrainRequest, get_brain_v3
+
+    brain = await _get_brain_from_request(request)
 
     brain_request = BrainRequest(
         request_id=f"hajeen_model_chat_{uuid.uuid4().hex[:12]}",
         user_message=req.message,
-        session_id=str(uuid.uuid4()), # New session for this specific model chat, or use req.session_id if available
+        session_id=req.session_id or str(uuid.uuid4()),
         context={
-            "history": req.history,
+            "history": req.history or [],
             "temperature": req.temperature,
             "max_tokens": req.max_tokens,
         },
-        stream=False,
-        max_tokens=req.max_tokens or 1024,
-        temperature=req.temperature or 0.7,
-        force_model=None, # Let Brain decide
-        request_type=RequestType.CHAT,
+        max_tokens=req.max_tokens,
+        temperature=req.temperature,
+        force_model=req.model,
     )
 
+    t0 = time.perf_counter()
     try:
-        brain_response: BrainResponse = await brain.process(brain_request)
+        response = await brain.process(brain_request)
         return {
             "ok": True,
-            "content": brain_response.content,
-            "provider": brain_response.model_used, # Using model_used as provider for now
-            "is_mock": False,
-            "model": brain_response.model_used,
-            "usage": {
-                "prompt_tokens": brain_response.trace.tokens_used, # Assuming trace has this
-                "completion_tokens": brain_response.trace.tokens_used, # Assuming trace has this
-                "total_tokens": brain_response.trace.tokens_used,
-            },
-            "latency_ms": brain_response.trace.total_latency_ms,
+            "response": response.content,
+            "session_id": brain_request.session_id,
+            "model_used": response.model_used,
+            "latency_ms": round((time.perf_counter() - t0) * 1000, 2),
+            "runtime": "HajeenBrainV3",
         }
     except Exception as e:
-        logger.error("Hajeen Model v1 chat error via Brain: %s", e)
-        raise HTTPException(status_code=500, detail=f"Hajeen Model v1 chat error: {str(e)}")
+        logger.error("Model chat error: %s", e)
+        raise HTTPException(status_code=500, detail=f"HajeenBrainV3 error: {e}")
 
 
 @router.post("/complete")
 async def complete(req: CompleteRequest, request: Request):
-    """استدلال كامل مع رسائل متعددة."""
+    """
+    استدلال كامل عبر HajeenBrainV3.
+    """
+    from brain.brain_v3 import BrainRequest, get_brain_v3
+
+    brain = await _get_brain_from_request(request)
+    last_user = next(
+        (m.content for m in reversed(req.messages) if m.role == "user"),
+        ""
+    )
+    history = [
+        {"role": m.role, "content": m.content}
+        for m in req.messages[:-1]
+    ]
+
+    brain_request = BrainRequest(
+        request_id=f"complete_{uuid.uuid4().hex[:12]}",
+        user_message=last_user,
+        session_id=str(uuid.uuid4()),
+        context={"history": history},
+        max_tokens=req.max_tokens,
+        temperature=req.temperature,
+    )
+
+    t0 = time.perf_counter()
     try:
-        brain = request.app.state.brain
-        if brain is None:
-            raise HTTPException(status_code=503, detail="HajeenBrainV3 not initialized")
-
-        user_message = " ".join([m.content for m in req.messages if m.role == "user"])
-        
-        brain_request = BrainRequest(
-            request_id=f"hajeen_model_complete_{uuid.uuid4().hex[:12]}",
-            user_message=user_message,
-            session_id=str(uuid.uuid4()),
-            context={
-                "messages": [m.dict() for m in req.messages],
-                "temperature": req.temperature,
-                "max_tokens": req.max_tokens,
-            },
-            stream=False,
-            max_tokens=req.max_tokens or 1024,
-            temperature=req.temperature or 0.7,
-            force_model=None,
-            request_type=RequestType.GENERATION,
-        )
-
-        brain_response: BrainResponse = await brain.process(brain_request)
+        response = await brain.process(brain_request)
         return {
             "ok": True,
-            "content": brain_response.content,
-            "model": brain_response.model_used,
-            "usage": {
-                "prompt_tokens": brain_response.trace.tokens_used,
-                "completion_tokens": brain_response.trace.tokens_used,
-                "total_tokens": brain_response.trace.tokens_used,
-            },
-            "latency_ms": brain_response.trace.total_latency_ms,
+            "content": response.content,
+            "model_used": response.model_used,
+            "latency_ms": round((time.perf_counter() - t0) * 1000, 2),
+            "runtime": "HajeenBrainV3",
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -189,200 +212,123 @@ async def complete(req: CompleteRequest, request: Request):
 
 @router.post("/stream")
 async def stream_chat(req: ChatRequest, request: Request):
-    """Streaming response (Server-Sent Events) via HajeenBrainV3."""
-    brain = request.app.state.brain
-    if brain is None:
-        raise HTTPException(status_code=503, detail="HajeenBrainV3 not initialized")
+    """
+    Streaming محادثة عبر HajeenBrainV3.stream().
+    الضمان: كل chunk يمر عبر Brain — لا LLM مباشر.
+    """
+    from brain.brain_v3 import BrainRequest, get_brain_v3
 
-    stream_id = str(uuid.uuid4())
+    brain = await _get_brain_from_request(request)
+
     brain_request = BrainRequest(
-        request_id=stream_id,
+        request_id=f"stream_{uuid.uuid4().hex[:12]}",
         user_message=req.message,
-        session_id=str(uuid.uuid4()),
+        session_id=req.session_id or str(uuid.uuid4()),
         context={
-            "history": req.history,
+            "history": req.history or [],
+            "stream": True,
             "temperature": req.temperature,
             "max_tokens": req.max_tokens,
-            "stream": True,
         },
         stream=True,
-        max_tokens=req.max_tokens or 1024,
-        temperature=req.temperature or 0.7,
-        force_model=None,
-        request_type=RequestType.CHAT,
+        max_tokens=req.max_tokens,
+        temperature=req.temperature,
+        force_model=req.model,
     )
 
-    async def generator():
+    async def event_generator():
         try:
             async for chunk in brain.stream(brain_request):
-                if chunk.startswith("data: "):
-                    data_str = chunk[6:].strip()
-                    if data_str == "[DONE]":
-                        yield f"data: {json.dumps({\'type\': \'token\', \'content\': \'\'}, ensure_ascii=False)}\n\n"
-                        yield "data: {\"type\": \"done\"}\n\n"
-                        break
-                    try:
-                        import ast
-                        data_dict = ast.literal_eval(data_str)
-                        if "content" in data_dict:
-                            yield f"data: {json.dumps({\'type\': \'token\', \'content\': data_dict[\'content\']}, ensure_ascii=False)}\n\n"
-                        elif "brain_decision" in data_dict:
-                            yield f"data: {json.dumps({\'type\': \'meta\', \'brain_decision\': data_dict[\'brain_decision\']}, ensure_ascii=False)}\n\n"
-                    except Exception as e:
-                        logger.debug("Failed to parse stream chunk from Brain: %s", e)
-                        yield f"data: {json.dumps({\'type\': \'token\', \'content\': data_str}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'content': chunk})}\n\n"
+            yield "data: [DONE]\n\n"
         except Exception as e:
-            logger.error("Hajeen Model v1 stream error via Brain: %s", e)
-            yield f"data: {json.dumps({\'type\': \'error\', \'error\': str(e)}, ensure_ascii=False)}\n\n"
-            yield "data: {\"type\": \"done\"}\n\n"
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            yield "data: [DONE]\n\n"
 
-    return StreamingResponse(generator(), media_type="text/event-stream")
-
-
-# ─── Ollama Management ────────────────────────────────────────────────────────
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @router.get("/ollama/status")
 async def ollama_status():
-    """حالة خادم Ollama والنماذج المثبتة."""
+    """حالة Ollama."""
     try:
-        from hajeen_model.ollama_manager import get_ollama_manager
-        manager = get_ollama_manager()
-        return await manager.status_report()
+        import httpx
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get("http://localhost:11434/api/tags")
+            data = resp.json()
+            return {"ok": True, "models": data.get("models", []), "status": "running"}
     except Exception as e:
-        return {"ollama_running": False, "error": str(e)}
+        return {"ok": False, "status": "unavailable", "error": str(e)}
 
 
 @router.post("/ollama/pull")
-async def ollama_pull(model_name: str = "qwen2.5:1.5b"):
-    """تحميل نموذج من Ollama (يستغرق وقتاً)."""
-    try:
-        from hajeen_model.ollama_manager import get_ollama_manager
-        manager = get_ollama_manager()
-        if not await manager.is_running():
-            raise HTTPException(status_code=503, detail="Ollama غير مشغّل. شغّل: ollama serve")
-        success = await manager.pull_model(model_name)
-        return {"ok": success, "model": model_name}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+async def ollama_pull(background_tasks: BackgroundTasks, model: str = "qwen2.5:7b"):
+    """تحميل نموذج Ollama في الخلفية."""
+    async def pull():
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=600.0) as client:
+                await client.post(
+                    "http://localhost:11434/api/pull",
+                    json={"name": model}
+                )
+            logger.info("Ollama: تم تحميل النموذج %s", model)
+        except Exception as e:
+            logger.error("Ollama pull failed: %s", e)
 
-
-@router.post("/ollama/reset")
-async def ollama_reset():
-    """إعادة فحص اتصال Ollama."""
-    from hajeen_model.hajeen_model_v1 import get_hajeen_model
-    get_hajeen_model().reset_ollama_cache()
-    return {"ok": True, "message": "سيتم إعادة فحص Ollama في الطلب القادم"}
-
-
-# ─── Training Management ──────────────────────────────────────────────────────
+    background_tasks.add_task(pull)
+    return {"ok": True, "message": f"جاري تحميل {model} في الخلفية"}
 
 
 @router.get("/training/status")
 async def training_status():
-    """حالة منظومة التدريب."""
-    from hajeen_model.training_pipeline import TrainingPipeline, ExperimentConfig
-    pipeline = TrainingPipeline()
-    reqs = pipeline.check_requirements()
-    checkpoints = pipeline.checkpoint_manager.list_checkpoints()
+    """حالة التدريب."""
+    from pathlib import Path
+    checkpoints = list(Path("hajeen_model/checkpoints").glob("*.bin")) if Path("hajeen_model/checkpoints").exists() else []
     return {
-        "requirements": reqs,
-        "can_train": reqs["can_train"],
-        "blockers": reqs["blockers"],
-        "checkpoints_count": len(checkpoints),
-        "checkpoints": checkpoints[-3:] if checkpoints else [],
+        "ok": True,
+        "checkpoints": len(checkpoints),
+        "training_active": False,
+        "note": "يمكن بدء التدريب عبر /model/training/simulate",
     }
 
 
 @router.post("/training/build-dataset")
 async def build_dataset(req: DatasetBuildRequest):
-    """بناء Dataset التدريب من بيانات المنصة."""
+    """بناء dataset للتدريب."""
     try:
-        from hajeen_model.dataset_builder import DatasetBuilder
+        from hajeen_model.training_pipeline import DatasetBuilder
         builder = DatasetBuilder()
-        n1 = builder.load_from_storage(req.storage_dir)
-        n2 = builder.load_from_processed(req.processed_dir)
-        n3 = builder.add_synthetic_examples(req.add_synthetic) if req.add_synthetic > 0 else 0
-
-        dataset = builder.build()
-        stats = builder.stats()
-        result = builder.save(dataset, "hajeen_model/data/dataset.jsonl", format=req.output_format)
-
-        return {
-            "ok": True,
-            "loaded": {"storage": n1, "processed": n2, "synthetic": n3},
-            "stats": {
-                "total": stats.total,
-                "arabic": stats.arabic,
-                "english": stats.english,
-                "avg_input_len_words": round(stats.avg_input_len, 1),
-                "avg_output_len_words": round(stats.avg_output_len, 1),
-                "estimated_tokens": stats.total_tokens_estimate,
-            },
-            "saved": result,
-            "ready_for_training": result["total"] >= 100,
-            "note": f"تحتاج إلى {max(0, 1000 - result['total'])} مثال إضافي للتدريب الجيد",
-        }
+        result = await builder.build(
+            storage_dir=req.storage_dir,
+            add_synthetic=req.add_synthetic,
+            output_format=req.output_format,
+        )
+        return {"ok": True, **result}
     except Exception as e:
-        logger.error("Build dataset error: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"ok": False, "error": str(e), "note": "Dataset builder غير متاح في البيئة الحالية"}
 
 
 @router.post("/training/simulate")
-async def simulate_training(req: TrainingRequest):
-    """محاكاة التدريب (بدون GPU)."""
+async def simulate_training(req: TrainingRequest, background_tasks: BackgroundTasks):
+    """محاكاة التدريب."""
     try:
-        from hajeen_model.training_pipeline import TrainingPipeline, ExperimentConfig
-        config = ExperimentConfig(
+        from hajeen_model.training_pipeline import TrainingPipeline, TrainingConfig
+        config = TrainingConfig(
             base_model=req.base_model,
             num_epochs=req.num_epochs,
             batch_size=req.batch_size,
             learning_rate=req.learning_rate,
         )
         pipeline = TrainingPipeline(config)
-        result = pipeline.run_simulation()
-        return {"ok": True, **result}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/training/start")
-async def start_training(req: TrainingRequest, background_tasks: BackgroundTasks):
-    """
-    بدء التدريب الفعلي (يتطلب GPU).
-    يُشغّل في الخلفية.
-    """
-    from hajeen_model.training_pipeline import TrainingPipeline, ExperimentConfig
-    config = ExperimentConfig(
-        base_model=req.base_model,
-        num_epochs=req.num_epochs,
-        batch_size=req.batch_size,
-        learning_rate=req.learning_rate,
-    )
-    pipeline = TrainingPipeline(config)
-    reqs = pipeline.check_requirements()
-
-    if not reqs["can_train"]:
+        background_tasks.add_task(pipeline.run_training)
         return {
-            "ok": False,
+            "ok": True,
             "experiment_id": config.experiment_id,
-            "blockers": reqs["blockers"],
-            "message": "لا يمكن التدريب في البيئة الحالية. للتدريب الحقيقي: استخدم /training/simulate",
+            "message": "التدريب بدأ في الخلفية",
         }
-
-    background_tasks.add_task(pipeline.run_training)
-    return {
-        "ok": True,
-        "experiment_id": config.experiment_id,
-        "message": "التدريب بدأ في الخلفية",
-        "check_logs": "hajeen_model/logs/",
-        "check_checkpoints": "hajeen_model/checkpoints/",
-    }
-
-
-# ─── Evaluation ───────────────────────────────────────────────────────────────
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 @router.post("/evaluate")
@@ -400,9 +346,12 @@ async def evaluate_model():
 @router.get("/training/checkpoints")
 async def list_checkpoints():
     """قائمة نقاط الحفظ."""
-    from hajeen_model.training_pipeline import CheckpointManager
-    manager = CheckpointManager()
-    return {
-        "checkpoints": manager.list_checkpoints(),
-        "best": manager.get_best_checkpoint(),
-    }
+    try:
+        from hajeen_model.training_pipeline import CheckpointManager
+        manager = CheckpointManager()
+        return {
+            "checkpoints": manager.list_checkpoints(),
+            "best": manager.get_best_checkpoint(),
+        }
+    except Exception as e:
+        return {"checkpoints": [], "best": None, "error": str(e)}

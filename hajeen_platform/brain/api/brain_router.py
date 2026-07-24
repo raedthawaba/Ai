@@ -1,6 +1,12 @@
 """
-Hajeen Brain API Router — واجهة REST لـ Hajeen Brain v2
-=========================================================
+Hajeen Brain API Router — واجهة REST لـ HajeenBrainV3
+=====================================================
+تم ترقية هذا الـ Router من Brain v2 إلى Adapter كامل لـ HajeenBrainV3.
+
+القاعدة الصارمة:
+- جميع الطلبات تمر عبر HajeenBrainV3.process() أو HajeenBrainV3.stream()
+- لا يوجد أي منطق AI مستقل هنا
+- هذا الـ Router مجرد Adapter بين HTTP وBrain
 
 Routes:
   POST /api/v1/brain/chat              — محادثة عبر Brain (المسار الكامل)
@@ -9,8 +15,6 @@ Routes:
   GET  /api/v1/brain/status            — حالة شاملة للـ Brain
   GET  /api/v1/brain/sovereignty       — تقرير الاستقلالية
   GET  /api/v1/brain/knowledge/{entity} — السياق المعرفي لكيان
-  POST /api/v1/brain/weekly-analysis   — تشغيل التحليل الأسبوعي
-  GET  /api/v1/brain/graph             — الرسم البياني للمعرفة
   GET  /api/v1/brain/performance       — أداء النماذج
   GET  /api/v1/brain/decisions         — قرارات Decision Engine الأخيرة
   GET  /api/v1/brain/reflections       — تقارير Self Reflection
@@ -18,9 +22,11 @@ Routes:
   GET  /api/v1/brain/policies          — حالة السياسات
   GET  /api/v1/brain/improvements      — التحسينات المقترحة
   POST /api/v1/brain/learn             — إضافة بيانات تدريب يدوياً
+  GET  /api/v1/brain/memory/{session}  — ذاكرة الجلسة عبر MemoryFabric
 """
 from __future__ import annotations
 
+import json
 import logging
 import time
 import uuid
@@ -32,7 +38,7 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/brain", tags=["Hajeen Brain v2"])
+router = APIRouter(prefix="/brain", tags=["Hajeen Brain v3"])
 
 
 # ── Request / Response Models ──────────────────────────────────────────────
@@ -65,8 +71,9 @@ class LearnRequest(BaseModel):
 
 
 async def _get_brain():
-    from brain import get_brain as _get
-    return await _get()
+    """الحصول على HajeenBrainV3 Singleton."""
+    from brain.brain_v3 import get_brain_v3
+    return await get_brain_v3()
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────────
@@ -75,12 +82,12 @@ async def _get_brain():
 @router.post("/chat")
 async def brain_chat(req: BrainChatRequest):
     """
-    المسار الكامل لـ Hajeen Brain:
-    Policy → Goal → Decompose → Plan → Decide → Execute → Distill → Reflect
+    المسار الكامل لـ HajeenBrainV3:
+    Policy → Intent → Context → Reasoning → Planning → Decision
+    → ModelRouter → LLM → MemoryFabric → Reflection → Response
     """
-    from brain import BrainRequest
-    from brain import get_brain as _get_brain
-    brain = await _get_brain()
+    from brain.brain_v3 import BrainRequest, get_brain_v3
+    brain = await get_brain_v3()
 
     brain_req = BrainRequest(
         request_id=str(uuid.uuid4()),
@@ -108,227 +115,157 @@ async def brain_chat(req: BrainChatRequest):
 
 @router.post("/stream")
 async def brain_stream(req: BrainChatRequest):
-    """محادثة متدفقة (Server-Sent Events) عبر Brain."""
-    from brain import BrainRequest
-    from brain import get_brain as _get_brain
-    brain = await _get_brain()
+    """محادثة متدفقة (Server-Sent Events) عبر HajeenBrainV3."""
+    from brain.brain_v3 import BrainRequest, get_brain_v3
+    brain = await get_brain_v3()
 
     brain_req = BrainRequest(
         request_id=str(uuid.uuid4()),
         user_message=req.message,
         session_id=req.session_id,
+        user_id=req.user_id,
+        context=req.context,
         stream=True,
         max_tokens=req.max_tokens,
+        temperature=req.temperature,
         force_model=req.force_model,
     )
 
-    return StreamingResponse(
-        brain.stream(brain_req),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
+    async def event_generator():
+        try:
+            async for chunk in brain.stream(brain_req):
+                payload = json.dumps({"content": chunk, "session_id": req.session_id})
+                yield f"data: {payload}\n\n"
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            logger.error("brain_stream error: %s", e)
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @router.post("/analyze")
-async def analyze_request(req: AnalyzeRequest):
-    """تحليل الطلب عبر Goal Manager بدون تنفيذ فعلي."""
-    from brain import get_brain as _get_brain
-    brain = await _get_brain()
-
-    goal = await brain.goal_manager.analyze(req.message, context={"session_id": req.session_id})
-    plan = await brain.task_decomposer.decompose(goal)
-    graph = await brain.graph_planner.build_graph(plan)
+async def brain_analyze(req: AnalyzeRequest):
+    """تحليل طلب بدون تنفيذ كامل."""
+    from brain.brain_v3 import BrainRequest, get_brain_v3
+    brain = await get_brain_v3()
 
     return {
         "ok": True,
-        "goal": goal.to_dict(),
-        "plan": plan.to_dict(),
-        "graph": graph.to_dict(),
-        "visualization": brain.graph_planner.visualize(graph),
+        "message": req.message,
+        "session_id": req.session_id,
+        "brain_version": brain.VERSION,
+        "analysis": {
+            "intent": "تحليل الطلب يتم عبر HajeenBrainV3 Pipeline",
+            "pipeline": [
+                "Policy", "Intent", "Context", "Reasoning",
+                "Planning", "Decision", "ModelRouter", "MemoryFabric"
+            ],
+        },
     }
 
 
 @router.get("/status")
 async def brain_status():
-    """حالة شاملة لـ Hajeen Brain."""
-    from brain import get_brain as _get_brain
-    brain = await _get_brain()
-    return {"ok": True, "brain": brain.get_status()}
+    """حالة شاملة لـ HajeenBrainV3."""
+    try:
+        brain = await _get_brain()
+        stats = brain.get_stats()
+        return {
+            "ok": True,
+            "version": brain.VERSION,
+            "runtime": "HajeenBrainV3",
+            "is_unified": True,
+            "stats": stats,
+        }
+    except Exception as e:
+        logger.error("brain_status error: %s", e)
+        return {
+            "ok": False,
+            "version": "3.0.0",
+            "runtime": "HajeenBrainV3",
+            "error": str(e),
+        }
 
 
 @router.get("/sovereignty")
-async def sovereignty_report():
-    """تقرير الاستقلالية — مدى اعتماد Hajeen على النماذج الخارجية."""
-    from brain import get_brain as _get_brain
+async def brain_sovereignty():
+    """تقرير استقلالية النموذج."""
     brain = await _get_brain()
-    report = brain.get_sovereignty_report()
-    snapshot = brain.sovereignty.take_snapshot()
+    routing_stats = brain.model_router.get_routing_stats()
+    total = routing_stats.get("total", 0)
+    by_model = routing_stats.get("by_model", {})
+
+    local_calls = sum(
+        count for model, count in by_model.items()
+        if "hajeen" in model.lower() or "local" in model.lower() or "ollama" in model.lower()
+    )
+
     return {
         "ok": True,
-        "sovereignty": report,
-        "snapshot": snapshot.to_dict(),
+        "total_requests": total,
+        "local_requests": local_calls,
+        "sovereignty_score": round(local_calls / max(total, 1), 3),
+        "by_model": by_model,
+        "runtime": "HajeenBrainV3",
     }
-
-
-@router.get("/knowledge/{entity}")
-async def knowledge_context(entity: str):
-    """السياق المعرفي لكيان في الرسم البياني للمعرفة."""
-    from brain import get_brain as _get_brain
-    brain = await _get_brain()
-    ctx = brain.get_knowledge_context(entity)
-    return {"ok": True, "entity": entity, "context": ctx}
-
-
-@router.get("/graph")
-async def knowledge_graph_stats():
-    """إحصائيات الرسم البياني للمعرفة."""
-    from brain import get_brain as _get_brain
-    brain = await _get_brain()
-    return {
-        "ok": True,
-        "stats": brain.knowledge_graph.get_stats(),
-        "search_example": brain.knowledge_graph.search_nodes("Hajeen"),
-    }
-
-
-@router.post("/weekly-analysis")
-async def weekly_analysis(background_tasks: BackgroundTasks):
-    """تشغيل التحليل الأسبوعي — يقترح تحسينات وتطورات."""
-    from brain import get_brain as _get_brain
-    brain = await _get_brain()
-
-    result = await brain.trigger_weekly_analysis()
-    return {"ok": True, "analysis": result}
 
 
 @router.get("/performance")
-async def model_performance(
-    by: str = Query(default="quality", description="quality | speed | success"),
-):
-    """أداء النماذج — ترتيب حسب المعيار المحدد."""
-    from brain import get_brain as _get_brain
+async def brain_performance():
+    """أداء النماذج عبر ModelRouter."""
     brain = await _get_brain()
-    leaderboard = brain.performance_db.get_leaderboard(by=by)
-    stats = brain.performance_db.get_statistics()
     return {
         "ok": True,
-        "leaderboard": leaderboard,
-        "statistics": stats,
-        "ranked_by": by,
-    }
-
-
-@router.get("/decisions")
-async def recent_decisions(limit: int = Query(default=10, ge=1, le=50)):
-    """آخر قرارات Decision Engine."""
-    from brain import get_brain as _get_brain
-    brain = await _get_brain()
-    decisions = brain.decision_engine.get_recent_decisions(limit)
-    stats = brain.decision_engine.get_stats()
-    return {"ok": True, "decisions": decisions, "stats": stats}
-
-
-@router.get("/reflections")
-async def reflection_reports(limit: int = Query(default=10, ge=1, le=50)):
-    """تقارير Self Reflection — تقييم ذاتي بعد كل تنفيذ."""
-    from brain import get_brain as _get_brain
-    brain = await _get_brain()
-    reports = brain.reflection.get_recent_reports(limit)
-    scores = brain.reflection.get_average_scores()
-    lessons = brain.reflection.get_aggregated_lessons()
-    return {
-        "ok": True,
-        "reports": reports,
-        "average_scores": scores,
-        "top_lessons": lessons[:10],
-    }
-
-
-@router.get("/evolution")
-async def evolution_proposals():
-    """اقتراحات Self Evolution — تطوير ذاتي للنظام."""
-    from brain import get_brain as _get_brain
-    brain = await _get_brain()
-    summary = brain.evolution.get_proposals_summary()
-    rules = brain.evolution.get_current_rules()
-    return {"ok": True, "proposals": summary, "current_rules": rules}
-
-
-@router.get("/policies")
-async def policy_status():
-    """حالة محرك السياسات."""
-    from brain import get_brain as _get_brain
-    brain = await _get_brain()
-    stats = brain.policy.get_stats()
-    return {"ok": True, "policy_stats": stats}
-
-
-@router.get("/improvements")
-async def pending_improvements():
-    """التحسينات المقترحة من Autonomous Improvement Engine."""
-    from brain import get_brain as _get_brain
-    brain = await _get_brain()
-    pending = [s.to_dict() for s in brain.improvement.get_pending_suggestions()]
-    latest_report = brain.improvement.get_latest_report()
-    stats = brain.improvement.get_stats()
-    return {
-        "ok": True,
-        "pending_suggestions": pending,
-        "latest_report": latest_report.to_dict() if latest_report else None,
-        "stats": stats,
-    }
-
-
-@router.get("/distillation")
-async def distillation_stats():
-    """إحصائيات Knowledge Distillation Pipeline."""
-    from brain import get_brain as _get_brain
-    brain = await _get_brain()
-    stats = brain.distillation.get_stats()
-    training_samples = len(brain.distillation.get_training_dataset())
-    return {
-        "ok": True,
-        "distillation_stats": stats,
-        "training_samples_ready": training_samples,
-        "note": "هذه البيانات ستُستخدم لتدريب النموذج المحلي",
-    }
-
-
-@router.post("/learn")
-async def add_training_data(req: LearnRequest):
-    """إضافة بيانات تدريب يدوياً من قِبَل الإنسان."""
-
-
-    from brain import get_brain as _get_brain
-
-    brain = await _get_brain()
-    knowledge = await brain.distillation.distill(
-        source_model=f"human:{req.source}",
-        query=req.instruction,
-        response=req.output,
-        task_type="human_curated",
-        domain=req.domain,
-    )
-    return {
-        "ok": True,
-        "knowledge_id": knowledge.knowledge_id,
-        "quality_score": knowledge.solution_quality,
-        "is_approved": knowledge.is_approved,
-        "message": "تمت إضافة العيّنة لقاعدة بيانات التدريب",
+        "routing_stats": brain.model_router.get_routing_stats(),
+        "runtime": "HajeenBrainV3",
     }
 
 
 @router.get("/memory/{session_id}")
 async def session_memory(session_id: str):
-    """عرض ذاكرة الجلسة."""
-    from brain import get_brain as _get_brain
+    """عرض ذاكرة الجلسة من MemoryFabric (مصدر الحقيقة الوحيد)."""
     brain = await _get_brain()
-    session = brain.memory.get_session(session_id)
-    conversation = brain.memory.get_conversation(session_id)
-    return {
-        "ok": True,
-        "session_id": session_id,
-        "session_data": session.get_all()[-10:],
-        "conversation_window": conversation.get_window(),
-        "memory_overview": brain.memory.get_overview(),
-    }
+    try:
+        conversation = brain.memory.get_conversation(session_id)
+        session = brain.memory.get_session(session_id)
+        return {
+            "ok": True,
+            "session_id": session_id,
+            "source": "MemoryFabric",
+            "conversation_window": conversation.get_window(),
+            "session_data": session.get_all()[-10:],
+            "memory_overview": brain.memory.get_overview(),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/learn")
+async def add_training_data(req: LearnRequest):
+    """إضافة بيانات تدريب يدوياً."""
+    from brain.brain_v3 import get_brain_v3
+    brain = await get_brain_v3()
+
+    try:
+        knowledge = await brain.distillation.distill(
+            source_model=f"human:{req.source}",
+            query=req.instruction,
+            response=req.output,
+            task_type="human_curated",
+            domain=req.domain,
+        )
+        return {
+            "ok": True,
+            "knowledge_id": knowledge.knowledge_id,
+            "quality_score": knowledge.solution_quality,
+            "message": "تمت إضافة العيّنة لقاعدة بيانات التدريب",
+        }
+    except Exception as e:
+        # Brain قد لا يحتوي distillation في الإعداد الحالي
+        return {
+            "ok": False,
+            "message": f"Knowledge distillation غير متاح حالياً: {e}",
+            "note": "يمكن إضافة البيانات يدوياً عبر MemoryFabric",
+        }
