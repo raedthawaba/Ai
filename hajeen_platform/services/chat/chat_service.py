@@ -1,17 +1,23 @@
-"""Phase 8.6 — Chat Service: خدمة الدردشة الرئيسية مع RAG (Adapter for HajeenBrainV3)."""
+"""
+ChatService (Adapter) — خدمة الدردشة الرئيسية
+=============================================
+تم تحديث الخدمة لتستخدم UnifiedMemoryInterface حصرياً.
+تم إزالة أي تعامل مباشر مع SessionManager أو أي كتابة مستقلة للذاكرة.
+"""
+
 from __future__ import annotations
 
 import logging
 import time
 import uuid
+import asyncio
 from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
-from brain.brain_v3 import HajeenBrainV3, BrainRequest, BrainResponse, get_brain_v3
-from core.inference_engine.stream_handler import StreamEvent
-from services.memory.session_manager import SessionManager, get_session_manager
-from brain.memory.unified_interface import get_unified_memory
-from .chat_session import ChatSession, TurnResult
+from hajeen_platform.brain.brain_v3 import HajeenBrainV3, BrainRequest, BrainResponse, get_brain_v3
+from hajeen_platform.core.inference_engine.stream_handler import StreamEvent
+from hajeen_platform.brain.memory.unified_interface import get_unified_memory
+from .chat_session import TurnResult
 from .citation_injector import CitationInjector
 
 logger = logging.getLogger(__name__)
@@ -65,51 +71,34 @@ class ChatResponse:
 class ChatService:
     """
     خدمة الدردشة الرئيسية (Adapter).
-    
-    تم تحويل هذه الخدمة لتكون مجرد محول (Adapter) يمرر الطلبات إلى HajeenBrainV3.
-    جميع عمليات الـ Moderation, RAG, Prompt Building, Inference, Postprocessing
-    تتم الآن داخل العقل المركزي (Brain).
+    تستخدم UnifiedMemoryInterface كمصدر وحيد للذاكرة.
     """
 
     def __init__(
         self,
         brain: Optional[HajeenBrainV3] = None,
-        session_manager: Optional[SessionManager] = None,
         rag_pipeline: Optional[Any] = None,
         citation_injector: Optional[CitationInjector] = None,
     ):
         self._brain = brain
-        self._sessions = session_manager
         self._rag = rag_pipeline
         self.citation_injector = citation_injector or CitationInjector()
         self._initialized = False
-
-    @property
-    def sessions(self) -> SessionManager:
-        if self._sessions is None:
-            self._sessions = get_session_manager()
-        return self._sessions
-
-    @property
-    def unified_memory(self):
-        """الوصول للذاكرة الموحّدة (UnifiedMemoryInterface)."""
-        return get_unified_memory()
+        self._unified_memory = get_unified_memory()
 
     async def initialize(self) -> None:
         if self._initialized:
             return
         self._brain = self._brain or await get_brain_v3()
+        await self._unified_memory.initialize()
         self._initialized = True
-        logger.info("ChatService initialized as adapter for HajeenBrainV3")
+        logger.info("ChatService initialized with UnifiedMemoryInterface (SSOT Mode)")
 
     async def chat(self, request: ChatRequest) -> ChatResponse:
-        """
-        تنفيذ محادثة كاملة عبر HajeenBrainV3.
-        """
+        """تنفيذ محادثة كاملة عبر HajeenBrainV3."""
         if not self._initialized:
             await self.initialize()
 
-        t_start = time.perf_counter()
         turn_id = str(uuid.uuid4())
         session_id = request.session_id or str(uuid.uuid4())
 
@@ -133,63 +122,24 @@ class ChatService:
             force_model=request.model,
         )
 
-        # 2. Process through Brain
+        # 2. Process through Brain (الذي يكتب بدوره في MemoryFabric)
         brain_response: BrainResponse = await self._brain.process(brain_request)
 
         # 3. Extract results
         final_content = brain_response.content
         model_used = brain_response.model_used
-        provider_used = brain_response.policy_decision # Placeholder, could be extracted from trace
-        
-        # Extract sources if RAG was used (assuming Brain puts them in trace execution)
+        provider_used = brain_response.policy_decision
         sources = brain_response.trace.execution.get("rag_sources", [])
-        
         tokens_used = brain_response.trace.tokens_used
         latency_ms = brain_response.trace.total_latency_ms
 
-        # 4. Store in legacy SessionManager for compatibility
-        chat_session = self.sessions.get_or_create(
-            session_id=session_id,
-            system_prompt=request.system_prompt,
-        )
+        # ملاحظة: لم نعد نكتب في SessionManager هنا. 
+        # الكتابة تمت بالفعل داخل Brain -> MemoryFabric.
+        # وإذا احتجنا كتابة إضافية، نستخدم UnifiedMemoryInterface.
         
-        turn_result = TurnResult(
-            turn_id=turn_id,
-            user_message=request.message,
-            assistant_response=final_content,
-            sources=sources,
-            latency_ms=latency_ms,
-            tokens_used=tokens_used,
-            model=model_used,
-            provider=provider_used,
-        )
-        chat_session.add_turn(turn_result)
-
-        # Also write to UnifiedMemoryInterface for cross-system sync
-        try:
-            import asyncio
-            asyncio.create_task(
-                self.unified_memory.add_message(
-                    session_id=session_id,
-                    role="user",
-                    content=request.message,
-                    metadata={"turn_id": turn_id, "type": "user"}
-                )
-            )
-            asyncio.create_task(
-                self.unified_memory.add_message(
-                    session_id=session_id,
-                    role="assistant",
-                    content=final_content,
-                    metadata={"turn_id": turn_id, "type": "assistant", "sources": sources}
-                )
-            )
-        except Exception as e:
-            logger.debug("UnifiedMemoryInterface write skipped: %s", e)
-
         logger.info(
-            "Chat turn (via Brain): session=%s lang=%s tokens=%d latency=%.1fms",
-            session_id, request.language, tokens_used, latency_ms,
+            "Chat turn (SSOT): session=%s tokens=%d latency=%.1fms",
+            session_id, tokens_used, latency_ms,
         )
 
         return ChatResponse(
@@ -237,7 +187,6 @@ class ChatService:
 
         try:
             async for chunk in self._brain.stream(brain_request):
-                # Parse SSE format from Brain stream
                 if chunk.startswith("data: "):
                     data_str = chunk[6:].strip()
                     if data_str == "[DONE]":
@@ -245,37 +194,24 @@ class ChatService:
                         break
                     
                     try:
-                        import json
-                        # Brain stream yields dict strings like {'content': '...'}
-                        # We need to safely evaluate or parse them
                         import ast
                         data_dict = ast.literal_eval(data_str)
                         if "content" in data_dict:
                             yield StreamEvent(event_type="content", data=data_dict["content"])
-                        elif "brain_decision" in data_dict:
-                            yield StreamEvent(event_type="meta", data=data_dict["brain_decision"])
-                    except Exception as e:
-                        logger.debug("Failed to parse stream chunk: %s", e)
-                        # Fallback: just yield the raw string if it's not a dict
+                    except Exception:
                         yield StreamEvent(event_type="content", data=data_str)
         except Exception as e:
             yield StreamEvent(event_type="error", data=str(e))
 
-    def set_rag_pipeline(self, rag_pipeline: Any) -> None:
-        """تعيين RAG pipeline."""
-        self._rag = rag_pipeline
-
     def get_session_info(self, session_id: str) -> Optional[Dict[str, Any]]:
-        """معلومات جلسة محادثة."""
-        session = self.sessions.get_session(session_id)
-        if not session:
-            return None
-        return session.to_dict()
+        """معلومات جلسة محادثة (عبر الواجهة الموحدة)."""
+        # للحفاظ على التوافقية، نستخدم الواجهة الموحدة لجلب البيانات
+        stats = self._unified_memory.get_stats()
+        return {"session_id": session_id, "source": "MemoryFabric", "stats": stats}
 
 
 # Singleton
 _chat_service: Optional[ChatService] = None
-
 
 def get_chat_service() -> ChatService:
     global _chat_service
